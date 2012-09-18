@@ -1,6 +1,7 @@
 
 module Main where
 
+import Data.Char
 import Data.List
 import Data.Maybe
 import Distribution.PackageDescription
@@ -14,6 +15,9 @@ import System.Exit
 import System.Posix.Files
 import System.Process
 
+trim :: String -> String
+trim = let f = reverse . dropWhile isSpace in f . f
+
 usage :: IO a
 usage = do
   runProcess "ghci" ["--help"] Nothing Nothing Nothing Nothing Nothing
@@ -23,7 +27,7 @@ usage = do
 main :: IO ()
 main = do
   args <- getArgs
-  dir <- readProcess "git" ["rev-parse", "--show-toplevel"] ""
+  dir <- readProcess "git" ["rev-parse", "--show-toplevel"] "" >>= return . trim
   files <- getDirectoryContents dir
   case filter (".cabal" `isSuffixOf`) $ files of
     [cabalFile] -> do
@@ -44,7 +48,9 @@ run pkg cabalDevDir extras = do
     libs = maybeToList . fmap libBuildInfo . library $ pkg
     execs = map buildInfo . executables $ pkg
     infos = libs ++ execs
-    exts = map extOption . concatMap defaultExtensions $ infos
+    newExts = concatMap defaultExtensions infos
+    oldExts = concatMap oldExtensions infos
+    exts = map extOption $ newExts ++ oldExts
     srcs = ("-i.:" ++) . intercalate ":" . concatMap hsSourceDirs $ infos
 
 extOption :: Extension -> String
