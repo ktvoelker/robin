@@ -1,22 +1,16 @@
 
 module Main where
 
-import Data.Char
 import Data.List
 import Data.Maybe
 import Distribution.PackageDescription
-import Distribution.PackageDescription.Configuration
-import Distribution.PackageDescription.Parse
-import Distribution.Verbosity
 import Language.Haskell.Extension
-import System.Directory
 import System.Environment
 import System.Exit
 import System.Posix.Files
 import System.Process
 
-trim :: String -> String
-trim = let f = reverse . dropWhile isSpace in f . f
+import Util
 
 usage :: IO a
 usage =
@@ -27,16 +21,12 @@ usage =
 main :: IO ()
 main = do
   args <- getArgs
-  dir <- readProcess "git" ["rev-parse", "--show-toplevel"] "" >>= return . trim
+  dir <- getRepoRoot
   let cabalDevDir = dir ++ "/cabal-dev"
   hasCabalDev <- fileExist cabalDevDir
   let cabalDevDir' = if hasCabalDev then Just cabalDevDir else Nothing
-  files <- getDirectoryContents dir
-  case filter (".cabal" `isSuffixOf`) $ files of
-    [cabalFile] -> do
-      pkg <- readPackageDescription silent $ dir ++ "/" ++ cabalFile
-      run (Just . flattenPackageDescription $ pkg) cabalDevDir' args
-    _ -> run Nothing cabalDevDir' args
+  pkg <- getPkgDesc dir
+  run pkg cabalDevDir' args
 
 cabalFileOptions :: PackageDescription -> [String]
 cabalFileOptions pkg = srcs : exts
