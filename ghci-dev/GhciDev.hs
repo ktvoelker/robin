@@ -19,31 +19,27 @@ trim :: String -> String
 trim = let f = reverse . dropWhile isSpace in f . f
 
 usage :: IO a
-usage = do
+usage =
   runProcess "ghci" ["--help"] Nothing Nothing Nothing Nothing Nothing
     >>= waitForProcess
-  exitFailure
+    >>  exitFailure
 
 main :: IO ()
 main = do
   args <- getArgs
   dir <- readProcess "git" ["rev-parse", "--show-toplevel"] "" >>= return . trim
+  let cabalDevDir = dir ++ "/cabal-dev"
+  hasCabalDev <- fileExist cabalDevDir
+  let cabalDevDir' = if hasCabalDev then Just cabalDevDir else Nothing
   files <- getDirectoryContents dir
   case filter (".cabal" `isSuffixOf`) $ files of
     [cabalFile] -> do
-      let cabalDevDir = dir ++ "/cabal-dev"
-      hasCabalDev <- fileExist cabalDevDir
-      let cabalDevDir' = if hasCabalDev then Just cabalDevDir else Nothing
       pkg <- readPackageDescription silent $ dir ++ "/" ++ cabalFile
-      run (flattenPackageDescription pkg) cabalDevDir' args
-    _ -> usage
+      run (Just . flattenPackageDescription $ pkg) cabalDevDir' args
+    _ -> run Nothing cabalDevDir' args
 
-run :: PackageDescription -> Maybe FilePath -> [FilePath] -> IO ()
-run pkg cabalDevDir extras = do
-  cdos <- maybe (return []) cabalDevOptions cabalDevDir
-  let opts = srcs : cdos ++ exts ++ extras
-  runProcess "ghci" opts Nothing Nothing Nothing Nothing Nothing
-    >>= waitForProcess >>= exitWith
+cabalFileOptions :: PackageDescription -> [String]
+cabalFileOptions pkg = srcs : exts
   where
     libs = maybeToList . fmap libBuildInfo . library $ pkg
     execs = map buildInfo . executables $ pkg
@@ -52,6 +48,13 @@ run pkg cabalDevDir extras = do
     oldExts = concatMap oldExtensions infos
     exts = map extOption $ newExts ++ oldExts
     srcs = ("-i.:" ++) . intercalate ":" . concatMap hsSourceDirs $ infos
+
+run :: Maybe PackageDescription -> Maybe FilePath -> [FilePath] -> IO ()
+run pkg cabalDevDir extras = do
+  cdos <- maybe (return []) cabalDevOptions cabalDevDir
+  let opts = maybe [] cabalFileOptions pkg ++ cdos ++ extras
+  runProcess "ghci" opts Nothing Nothing Nothing Nothing Nothing
+    >>= waitForProcess >>= exitWith
 
 extOption :: Extension -> String
 extOption (EnableExtension e) = "-X" ++ show e
