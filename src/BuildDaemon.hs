@@ -14,6 +14,7 @@ import System.Exit
 import System.FSNotify
 import System.IO hiding (FilePath)
 import System.Posix.Daemonize
+import System.Posix.Process
 import System.Posix.Signals
 import System.Posix.Types
 import System.Process
@@ -23,7 +24,7 @@ import Deprecated
 import Util
 
 specialFile specialName repoRoot =
-  addExtension (repoRoot </> ".cabal-dev-build-") specialName
+  addExtension (repoRoot </> ".cabal-dev-build-daemon") specialName
 
 triggerFile = specialFile "trigger"
 
@@ -56,9 +57,12 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["start"] -> start
-    ["stop"]  -> stop
-    ["build"] -> start >> waitForBuild
+    ["start"]  -> start daemonize
+    ["debug"]  -> start id
+    ["stop"]   -> stop
+    ["build"]  -> start daemonize >> waitForBuild
+    ["watch"]  -> start daemonize >> watchBuilds
+    ["latest"] -> start daemonize >> latestBuild
     _         -> do
       putStrLn "Usage: cabal-dev-build-daemon (start | build | stop)"
       exitFailure
@@ -76,13 +80,19 @@ prepare = do
       let pid = readMaybe pidString
       return (repoRoot, pid)
 
-start :: IO ()
-start = do
+start :: (IO () -> IO ()) -> IO ()
+start f = do
   (repoRoot, pid) <- prepare
   when (pid == Nothing) $ do
+    let writePid = writeFile (encodeString $ pidFile repoRoot)
+    let handler sig = CatchOnce $ writePid "" >> raiseSignal sig
+    let exitOn sig = void $ installHandler sig (handler sig) Nothing
+    exitOn sigTERM
+    exitOn sigINT
+    getProcessID >>= writePid . show
     pkg <- getPkgDesc $ encodeString repoRoot
     let srcs = maybe ["."] srcDirs pkg
-    daemonize $ withManager $ \mgr -> do
+    f $ withManager $ \mgr -> do
       chan <- newChan
       let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
       mapM_ w srcs
@@ -128,7 +138,13 @@ waitForBuild = do
   withManager $ \mgr -> do
     chan <- newChan
     watchDirChan mgr repoRoot (touchPred $ statusFile repoRoot) chan
-    appendFile (encodeString $ triggerFile repoRoot) ""
+    writeFile (encodeString $ triggerFile repoRoot) ""
     void $ readChan chan
     readFile (encodeString $ outputFile repoRoot) >>= putStr
+
+watchBuilds :: IO ()
+watchBuilds = undefined
+
+latestBuild :: IO ()
+latestBuild = undefined
 

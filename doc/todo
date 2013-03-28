@@ -1,0 +1,23 @@
+
+TODO
+====
+
+Make the daemon immediate run a build when started
+
+Implement latest command
+
+  We need some way to know when a build is in progress
+
+    How about we write something into the trigger file when starting a build,
+    and clear it out when done?
+
+    The build command should check the trigger file and not re-trigger if a build is
+    running, instead becoming more like the latest command.
+
+    Actually, the latest command is what we wanted the build command to be. So scrap
+    the old build command and rename latest to build.
+
+Implement watch command
+
+Implement clean command
+
