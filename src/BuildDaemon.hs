@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import Control.Concurrent.Chan
+import Control.Concurrent.Chan hiding (isEmptyChan)
 import Control.Monad
 import Distribution.PackageDescription
 import Filesystem.Path.CurrentOS
@@ -13,13 +13,30 @@ import System.Environment
 import System.Exit
 import System.FSNotify
 import System.IO hiding (FilePath)
-import System.Posix.Daemonize ()
+import System.Posix.Daemonize
 import System.Posix.Signals
 import System.Posix.Types
 import System.Process
 import Data.Text
 
+import Deprecated
 import Util
+
+specialFile specialName repoRoot =
+  addExtension (repoRoot </> ".cabal-dev-build-") specialName
+
+triggerFile = specialFile "trigger"
+
+outputFile = specialFile "output"
+
+pidFile = specialFile "pid"
+
+statusFile = specialFile "status"
+
+touchPred :: FilePath -> Event -> Bool
+touchPred fp (Added fp' _) = fp == fp'
+touchPred fp (Modified fp' _) = fp == fp'
+touchPred _ _ = False
 
 srcDirs :: PackageDescription -> [String]
 srcDirs = buildInfos >=> hsSourceDirs
@@ -50,12 +67,12 @@ prepare :: IO (FilePath, Maybe CPid)
 prepare = do
   dir <- getRepoRoot
   let repoRoot = fromString dir
-  let pidFile = encodeString $ repoRoot </> ".cabal-dev-build-pid"
-  pidFileExists <- doesFileExist pidFile
+  let pidFilePath = encodeString $ pidFile repoRoot
+  pidFileExists <- doesFileExist pidFilePath
   case pidFileExists of
     False -> return (repoRoot, Nothing)
     True -> do
-      pidString <- readFile pidFile
+      pidString <- readFile pidFilePath
       let pid = readMaybe pidString
       return (repoRoot, pid)
 
@@ -63,22 +80,26 @@ start :: IO ()
 start = do
   (repoRoot, pid) <- prepare
   when (pid == Nothing) $ do
-    let codeFile = repoRoot </> ".cabal-dev-build-status"
-    let outFile = repoRoot </> ".cabal-dev-build-output"
     pkg <- getPkgDesc $ encodeString repoRoot
     let srcs = maybe ["."] srcDirs pkg
-    -- TODO daemonize everything below here
-    withManager $ \mgr -> do
+    daemonize $ withManager $ \mgr -> do
       chan <- newChan
       let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
       mapM_ w srcs
-      -- TODO read everything that is already waiting in the chan and then build once
-      -- unless we read nothing
-      forever $ readChan chan >>= const (build repoRoot codeFile outFile)
+      watchDirChan mgr repoRoot (touchPred $ triggerFile repoRoot) chan
+      forever $ flushChan chan >> build repoRoot
 
-build :: FilePath -> FilePath -> FilePath -> IO ()
-build repoRoot codeFile outFile = do
-  outHandle <- openFile (encodeString outFile) WriteMode
+flushChan :: Chan a -> IO ()
+flushChan chan = r >> f
+  where
+    r = void $ readChan chan
+    f = isEmptyChan chan >>= \e -> case e of
+      True  -> return ()
+      False -> flushChan chan
+
+build :: FilePath -> IO ()
+build repoRoot = do
+  outHandle <- openFile (encodeString $ outputFile repoRoot) WriteMode
   (_, _, _, ph) <-
     createProcess
     $ (proc "cabal-dev" ["build"])
@@ -89,7 +110,7 @@ build repoRoot codeFile outFile = do
       }
   hClose outHandle
   code <- waitForProcess ph
-  let writeCode = writeFile (encodeString codeFile) . show
+  let writeCode = writeFile (encodeString $ statusFile repoRoot) . show
   case code of
     ExitSuccess -> writeCode 0
     ExitFailure n -> writeCode n
@@ -102,8 +123,12 @@ stop = do
     Just pid -> signalProcess sigTERM pid
 
 waitForBuild :: IO ()
-waitForBuild = todo
--- 1. Set up fsnotify to watch for a change to .cabal-dev-build-status
--- 2. Touch .cabal-dev-build-trigger (make the daemon watch it)
--- 3. Once .cabal-dev-build-status changes, print .cabal-dev-build-output
+waitForBuild = do
+  (repoRoot, _) <- prepare
+  withManager $ \mgr -> do
+    chan <- newChan
+    watchDirChan mgr repoRoot (touchPred $ statusFile repoRoot) chan
+    appendFile (encodeString $ triggerFile repoRoot) ""
+    void $ readChan chan
+    readFile (encodeString $ outputFile repoRoot) >>= putStr
 
