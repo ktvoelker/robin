@@ -15,6 +15,11 @@ import System.Process
 todo :: a
 todo = error "Not implemented"
 
+readMaybe :: (Read a) => String -> Maybe a
+readMaybe xs = case reads xs of
+  [(x, "")] -> Just x
+  _ -> Nothing
+
 buildInfos :: PackageDescription -> [BuildInfo]
 buildInfos pkg = libs ++ execs
   where
