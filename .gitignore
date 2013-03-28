@@ -2,3 +2,4 @@
 /cabal-dev
 /cabal-dev-build-daemon
 /ghci-dev
+/.cabal-dev-build-*
