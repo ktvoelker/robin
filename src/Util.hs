@@ -4,6 +4,7 @@ module Util where
 import Data.Char
 import Data.Functor
 import Data.List
+import Data.Maybe
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
 import Distribution.PackageDescription.Parse
@@ -13,6 +14,12 @@ import System.Process
 
 todo :: a
 todo = error "Not implemented"
+
+buildInfos :: PackageDescription -> [BuildInfo]
+buildInfos pkg = libs ++ execs
+  where
+    libs = maybeToList . fmap libBuildInfo . library $ pkg
+    execs = map buildInfo . executables $ pkg
 
 trim :: String -> String
 trim = let f = reverse . dropWhile isSpace in f . f

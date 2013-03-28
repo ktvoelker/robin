@@ -2,7 +2,6 @@
 module Main where
 
 import Data.List
-import Data.Maybe
 import Distribution.PackageDescription
 import Language.Haskell.Extension
 import System.Environment
@@ -31,9 +30,7 @@ main = do
 cabalFileOptions :: PackageDescription -> [String]
 cabalFileOptions pkg = srcs : exts
   where
-    libs = maybeToList . fmap libBuildInfo . library $ pkg
-    execs = map buildInfo . executables $ pkg
-    infos = libs ++ execs
+    infos = buildInfos pkg
     newExts = concatMap defaultExtensions infos
     oldExts = concatMap oldExtensions infos
     exts = map extOption $ newExts ++ oldExts
