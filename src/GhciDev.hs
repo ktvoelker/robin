@@ -1,5 +1,5 @@
 
-module Main where
+module Main (main) where
 
 import Data.List
 import Distribution.PackageDescription
@@ -10,12 +10,6 @@ import System.Posix.Files
 import System.Process
 
 import Util
-
-usage :: IO a
-usage =
-  runProcess "ghci" ["--help"] Nothing Nothing Nothing Nothing Nothing
-    >>= waitForProcess
-    >>  exitFailure
 
 main :: IO ()
 main = do

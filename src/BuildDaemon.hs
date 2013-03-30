@@ -1,6 +1,6 @@
 
 {-# LANGUAGE OverloadedStrings #-}
-module Main where
+module Main (main) where
 
 import Control.Concurrent.Chan hiding (isEmptyChan)
 import Control.Monad
@@ -25,6 +25,14 @@ import Data.Text
 import Deprecated
 import Util
 
+finally :: IO a -> IO () -> IO a
+finally a b = do
+  ra <- tryIOError a
+  catchIOError b $ \err -> putStrLn $ "Error in finally action: " ++ show err
+  case ra of
+    Left err  -> ioError err
+    Right ret -> return ret
+
 specialFile specialName repoRoot =
   addExtension (repoRoot </> ".cabal-dev-build-daemon") specialName
 
@@ -42,17 +50,15 @@ getSem create =
   where
     f create = OpenSemFlags { semCreate = create, semExclusive = False }
 
-withSem :: Semaphore -> IO a -> IO a
-withSem sem action = do
-  semWait sem
-  ret <- tryIOError action
-  semPost sem
-  case ret of
-    Left err -> ioError err
-    Right ret -> return ret
+withLock :: Semaphore -> IO a -> IO a
+withLock sem action = (semWait sem >> action) `finally` semPost sem
 
-withGetSem :: IO a -> IO a
-withGetSem action = getSem False >>= \sem -> withSem sem action
+withCreateSem :: (Semaphore -> IO a) -> IO a
+-- TODO should we lock the sem before deleting it?
+withCreateSem f = (getSem True >>= f) `finally` semUnlink semName
+
+withLock' :: IO a -> IO a
+withLock' action = getSem False >>= \sem -> withLock sem action
 
 srcDirs :: PackageDescription -> [String]
 srcDirs = buildInfos >=> hsSourceDirs
@@ -116,16 +122,16 @@ start f = do
         pkg <- getPkgDesc $ encodeString repoRoot
         let srcs = maybe ["."] srcDirs pkg
         putStrLn "Creating semaphore..."
-        sem <- getSem True
-        putStrLn "Starting notification manager..."
-        f $ withManager $ \mgr -> do
-          chan <- newChan
-          let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
-          mapM_ w srcs
-          putStrLn "Starting initial build..."
-          build sem repoRoot
-          putStrLn "Starting event loop..."
-          forever $ flushChan chan >> build sem repoRoot
+        withCreateSem $ \sem -> do
+          putStrLn "Starting notification manager..."
+          f $ withManager $ \mgr -> do
+            chan <- newChan
+            let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
+            mapM_ w srcs
+            putStrLn "Starting initial build..."
+            build sem repoRoot
+            putStrLn "Starting event loop..."
+            forever $ flushChan chan >> build sem repoRoot
 
 flushChan :: Chan a -> IO ()
 flushChan chan = r >> f
@@ -136,7 +142,7 @@ flushChan chan = r >> f
       False -> flushChan chan
 
 build :: Semaphore -> FilePath -> IO ()
-build sem repoRoot = withSem sem $ do
+build sem repoRoot = withLock sem $ do
   outHandle <- openFile (encodeString $ outputFile repoRoot) WriteMode
   (_, _, _, ph) <-
     createProcess
@@ -163,7 +169,7 @@ stop = do
 waitForBuild :: IO ()
 waitForBuild = do
   (repoRoot, _) <- prepare
-  status <- withGetSem $ do
+  status <- withLock' $ do
     readFile (encodeString $ outputFile repoRoot) >>= putStr
     statusStr <- readFile (encodeString $ statusFile repoRoot)
     return $ case readMaybe statusStr of
