@@ -13,8 +13,10 @@ import System.Environment
 import System.Exit
 import System.FSNotify
 import System.IO hiding (FilePath)
+import System.IO.Error
 import System.Posix.Daemonize
 import System.Posix.Process
+import System.Posix.Semaphore
 import System.Posix.Signals
 import System.Posix.Types
 import System.Process
@@ -26,18 +28,31 @@ import Util
 specialFile specialName repoRoot =
   addExtension (repoRoot </> ".cabal-dev-build-daemon") specialName
 
-triggerFile = specialFile "trigger"
-
 outputFile = specialFile "output"
 
 pidFile = specialFile "pid"
 
 statusFile = specialFile "status"
 
-touchPred :: FilePath -> Event -> Bool
-touchPred fp (Added fp' _) = fp == fp'
-touchPred fp (Modified fp' _) = fp == fp'
-touchPred _ _ = False
+semName = "/cabal-dev-build-daemon"
+
+getSem :: Bool -> IO Semaphore
+getSem create =
+  semOpen semName (f create) 0x700 1
+  where
+    f create = OpenSemFlags { semCreate = create, semExclusive = False }
+
+withSem :: Semaphore -> IO a -> IO a
+withSem sem action = do
+  semWait sem
+  ret <- tryIOError action
+  semPost sem
+  case ret of
+    Left err -> ioError err
+    Right ret -> return ret
+
+withGetSem :: IO a -> IO a
+withGetSem action = getSem False >>= \sem -> withSem sem action
 
 srcDirs :: PackageDescription -> [String]
 srcDirs = buildInfos >=> hsSourceDirs
@@ -62,7 +77,6 @@ main = do
     ["stop"]   -> stop
     ["build"]  -> start daemonize >> waitForBuild
     ["watch"]  -> start daemonize >> watchBuilds
-    ["latest"] -> start daemonize >> latestBuild
     _         -> do
       putStrLn "Usage: cabal-dev-build-daemon (start | build | stop)"
       exitFailure
@@ -83,21 +97,35 @@ prepare = do
 start :: (IO () -> IO ()) -> IO ()
 start f = do
   (repoRoot, pid) <- prepare
-  when (pid == Nothing) $ do
-    let writePid = writeFile (encodeString $ pidFile repoRoot)
-    let handler sig = CatchOnce $ writePid "" >> raiseSignal sig
-    let exitOn sig = void $ installHandler sig (handler sig) Nothing
-    exitOn sigTERM
-    exitOn sigINT
-    getProcessID >>= writePid . show
-    pkg <- getPkgDesc $ encodeString repoRoot
-    let srcs = maybe ["."] srcDirs pkg
-    f $ withManager $ \mgr -> do
-      chan <- newChan
-      let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
-      mapM_ w srcs
-      watchDirChan mgr repoRoot (touchPred $ triggerFile repoRoot) chan
-      forever $ flushChan chan >> build repoRoot
+  putStrLn $ "Found repo root: " ++ encodeString repoRoot
+  case pid of
+    Just pid -> putStrLn $ "Daemon already running: pid " ++ show pid
+    Nothing -> do
+      let pidFileString = encodeString $ pidFile repoRoot
+      let writePid = writeFile pidFileString
+      let rmPid = removeFile pidFileString
+      let handler sig = CatchOnce $ rmPid >> raiseSignal sig
+      let exitOn sig = void $ installHandler sig (handler sig) Nothing
+      putStrLn "Installing signal handlers..."
+      exitOn sigTERM
+      exitOn sigINT
+      putStrLn "Writing pidfile..."
+      getProcessID >>= writePid . show
+      flip catchIOError (\err -> rmPid >> print err) $ do
+        putStrLn "Reading package description..."
+        pkg <- getPkgDesc $ encodeString repoRoot
+        let srcs = maybe ["."] srcDirs pkg
+        putStrLn "Creating semaphore..."
+        sem <- getSem True
+        putStrLn "Starting notification manager..."
+        f $ withManager $ \mgr -> do
+          chan <- newChan
+          let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
+          mapM_ w srcs
+          putStrLn "Starting initial build..."
+          build sem repoRoot
+          putStrLn "Starting event loop..."
+          forever $ flushChan chan >> build sem repoRoot
 
 flushChan :: Chan a -> IO ()
 flushChan chan = r >> f
@@ -107,8 +135,8 @@ flushChan chan = r >> f
       True  -> return ()
       False -> flushChan chan
 
-build :: FilePath -> IO ()
-build repoRoot = do
+build :: Semaphore -> FilePath -> IO ()
+build sem repoRoot = withSem sem $ do
   outHandle <- openFile (encodeString $ outputFile repoRoot) WriteMode
   (_, _, _, ph) <-
     createProcess
@@ -135,16 +163,15 @@ stop = do
 waitForBuild :: IO ()
 waitForBuild = do
   (repoRoot, _) <- prepare
-  withManager $ \mgr -> do
-    chan <- newChan
-    watchDirChan mgr repoRoot (touchPred $ statusFile repoRoot) chan
-    writeFile (encodeString $ triggerFile repoRoot) ""
-    void $ readChan chan
+  status <- withGetSem $ do
     readFile (encodeString $ outputFile repoRoot) >>= putStr
+    statusStr <- readFile (encodeString $ statusFile repoRoot)
+    return $ case readMaybe statusStr of
+      Nothing -> ExitFailure 42
+      Just 0  -> ExitSuccess
+      Just n  -> ExitFailure n
+  exitWith status
 
 watchBuilds :: IO ()
 watchBuilds = undefined
-
-latestBuild :: IO ()
-latestBuild = undefined
 

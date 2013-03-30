@@ -2,22 +2,25 @@
 TODO
 ====
 
-Make the daemon immediate run a build when started
+Use a Reader to hold the repo root
 
-Implement latest command
+  And the semaphore?
 
-  We need some way to know when a build is in progress
+Make our output go to a logfile in daemon mode
 
-    How about we write something into the trigger file when starting a build,
-    and clear it out when done?
-
-    The build command should check the trigger file and not re-trigger if a build is
-    running, instead becoming more like the latest command.
-
-    Actually, the latest command is what we wanted the build command to be. So scrap
-    the old build command and rename latest to build.
+  And to both a logfile and stderr in debug mode
 
 Implement watch command
 
+  Use fsnotify to watch for changes to the status file
+
+  When changed, grab the semaphore, print the new results, release the semaphore
+
 Implement clean command
+
+  This will, of course, immediately rebuild
+
+Move all the special files into a single .cabal-dev-build subdirectory
+
+Make it so there's only ever one daemon no matter how many projects need building
 
