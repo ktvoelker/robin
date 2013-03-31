@@ -38,6 +38,8 @@ specialFile specialName repoRoot =
 
 outputFile = specialFile "output"
 
+lessFile = specialFile "less"
+
 pidFile = specialFile "pid"
 
 statusFile = specialFile "status"
@@ -178,6 +180,32 @@ waitForBuild = do
       Just n  -> ExitFailure n
   exitWith status
 
+filePred :: FilePath -> Event -> Bool
+filePred fp e = fp == eventFile e
+
 watchBuilds :: IO ()
-watchBuilds = undefined
+watchBuilds = do
+  (repoRoot, _) <- prepare
+  withManager $ \mgr -> do
+    chan <- newChan
+    watchDirChan mgr repoRoot (filePred $ statusFile repoRoot) chan
+    lessProc <- dump repoRoot
+    let f lessProc = flushChan chan >> terminateProcess lessProc >> dump repoRoot >>= f
+    f lessProc
+
+clearTerminal :: IO ProcessHandle
+clearTerminal = runProcess "clear" [] Nothing Nothing Nothing Nothing Nothing
+
+dump :: FilePath -> IO ProcessHandle
+dump repoRoot = do
+  clearProc <- clearTerminal
+  let lessFileString = encodeString $ lessFile repoRoot
+  withLock'
+    $ readFile (encodeString $ outputFile repoRoot)
+      >>= writeFile lessFileString
+  outHandle <- openFile lessFileString ReadMode
+  void $ waitForProcess clearProc
+  lessProc <- runProcess "less" [] Nothing Nothing (Just outHandle) Nothing Nothing
+  hClose outHandle
+  return lessProc
 

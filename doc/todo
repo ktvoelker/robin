@@ -10,12 +10,6 @@ Make our output go to a logfile in daemon mode
 
   And to both a logfile and stderr in debug mode
 
-Implement watch command
-
-  Use fsnotify to watch for changes to the status file
-
-  When changed, grab the semaphore, print the new results, release the semaphore
-
 Implement clean command
 
   This will, of course, immediately rebuild
