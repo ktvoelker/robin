@@ -15,6 +15,9 @@ import System.Process
 todo :: a
 todo = error "Not implemented"
 
+leftMaybe :: Either a b -> Maybe a
+leftMaybe = either Just $ const Nothing
+
 readMaybe :: (Read a) => String -> Maybe a
 readMaybe xs = case reads xs of
   [(x, "")] -> Just x

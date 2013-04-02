@@ -2,210 +2,173 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
-import Control.Concurrent.Chan hiding (isEmptyChan)
+import Control.Concurrent
 import Control.Monad
-import Distribution.PackageDescription
+import Control.Monad.Error
+import Control.Monad.Reader
+import Control.Monad.Trans.Control
+import Control.Monad.Trans.Resource
+import Data.Functor
+import Data.Lens
 import Filesystem.Path.CurrentOS
 import GHC.Exts (fromString)
 import Prelude hiding (FilePath)
-import System.Directory
 import System.Environment
 import System.Exit
-import System.FSNotify
 import System.IO hiding (FilePath)
-import System.IO.Error
 import System.Posix.Daemonize
-import System.Posix.Process
+import System.Posix.IO
 import System.Posix.Semaphore
 import System.Posix.Signals
-import System.Posix.Types
 import System.Process
-import Data.Text
 
-import Deprecated
+import BuildDaemon.Lock
+import BuildDaemon.PidFile
+import BuildDaemon.Types
+import BuildDaemon.Watch
 import Util
 
-finally :: IO a -> IO () -> IO a
-finally a b = do
-  ra <- tryIOError a
-  catchIOError b $ \err -> putStrLn $ "Error in finally action: " ++ show err
-  case ra of
-    Left err  -> ioError err
-    Right ret -> return ret
+check :: Either Err a -> IO ()
+check = maybe (return ()) print . leftMaybe
 
-specialFile specialName repoRoot =
-  addExtension (repoRoot </> ".cabal-dev-build-daemon") specialName
+startDaemon :: I St
+startDaemon = do
+  logFileString <- asksString envLogFile
+  let
+  { openLog = do
+      (hKey, logHandle) <- allocate (openFile logFileString AppendMode) hClose
+      (fdKey, logFd) <- allocate (handleToFd logHandle) closeFd
+      void $ unprotect hKey
+      void $ allocate (dupTo logFd stdOutput) closeFd
+      release fdKey
+  }
+  start $ liftBaseDiscard daemonize . (openLog >>)
 
-outputFile = specialFile "output"
-
-lessFile = specialFile "less"
-
-pidFile = specialFile "pid"
-
-statusFile = specialFile "status"
-
-semName = "/cabal-dev-build-daemon"
-
-getSem :: Bool -> IO Semaphore
-getSem create =
-  semOpen semName (f create) 0x700 1
-  where
-    f create = OpenSemFlags { semCreate = create, semExclusive = False }
-
-withLock :: Semaphore -> IO a -> IO a
-withLock sem action = (semWait sem >> action) `finally` semPost sem
-
-withCreateSem :: (Semaphore -> IO a) -> IO a
--- TODO should we lock the sem before deleting it?
-withCreateSem f = (getSem True >>= f) `finally` semUnlink semName
-
-withLock' :: IO a -> IO a
-withLock' action = getSem False >>= \sem -> withLock sem action
-
-srcDirs :: PackageDescription -> [String]
-srcDirs = buildInfos >=> hsSourceDirs
-
-exts :: [Text]
-exts = ["hs", "lhs"]
-
-eventPred :: Event -> Bool
-eventPred = maybe False (`elem` exts) . extension . eventFile
-
-eventFile :: Event -> FilePath
-eventFile (Added fp _) = fp
-eventFile (Modified fp _) = fp
-eventFile (Removed fp _) = fp
+usage :: String
+usage = "Usage: cabal-dev-build-daemon (start | stop | build | watch | debug)"
 
 main :: IO ()
 main = do
   args <- getArgs
+  repoRoot <- fromString <$> getRepoRoot
   case args of
-    ["start"]  -> start daemonize
-    ["debug"]  -> start id
-    ["stop"]   -> stop
-    ["build"]  -> start daemonize >> waitForBuild
-    ["watch"]  -> start daemonize >> watchBuilds
+    ["start"] -> runI repoRoot startDaemon >>= check
+    ["debug"] -> runI repoRoot (start id) >>= check
+    ["stop"]  -> runI repoRoot stop >>= check
+    ["build"] -> runM repoRoot startDaemon waitForBuild >>= check
+    ["watch"] -> runM repoRoot startDaemon watchBuilds >>= check
     _         -> do
-      putStrLn "Usage: cabal-dev-build-daemon (start | build | stop)"
+      hPutStrLn stderr usage
       exitFailure
 
-prepare :: IO (FilePath, Maybe CPid)
-prepare = do
-  dir <- getRepoRoot
-  let repoRoot = fromString dir
-  let pidFilePath = encodeString $ pidFile repoRoot
-  pidFileExists <- doesFileExist pidFilePath
-  case pidFileExists of
-    False -> return (repoRoot, Nothing)
-    True -> do
-      pidString <- readFile pidFilePath
-      let pid = readMaybe pidString
-      return (repoRoot, pid)
+exts :: [String]
+exts = ["hs", "lhs", "cabal"]
 
-start :: (IO () -> IO ()) -> IO ()
+srcPred :: WatchPred
+srcPred = PredDisj $ map PredExtension exts
+
+start :: (I () -> I ()) -> I St
 start f = do
-  (repoRoot, pid) <- prepare
-  putStrLn $ "Found repo root: " ++ encodeString repoRoot
-  case pid of
-    Just pid -> putStrLn $ "Daemon already running: pid " ++ show pid
+  repoRoot <- asks (envRepoRoot ^$)
+  readPidFile >>= \pid -> case pid of
+    Just pid -> do
+      debugs $ "Daemon already running: pid " ++ show pid
+      emptySt <$> findLock
     Nothing -> do
-      let pidFileString = encodeString $ pidFile repoRoot
-      let writePid = writeFile pidFileString
-      let rmPid = removeFile pidFileString
-      let handler sig = CatchOnce $ rmPid >> raiseSignal sig
-      let exitOn sig = void $ installHandler sig (handler sig) Nothing
-      putStrLn "Installing signal handlers..."
-      exitOn sigTERM
-      exitOn sigINT
-      putStrLn "Writing pidfile..."
-      getProcessID >>= writePid . show
-      flip catchIOError (\err -> rmPid >> print err) $ do
-        putStrLn "Reading package description..."
-        pkg <- getPkgDesc $ encodeString repoRoot
-        let srcs = maybe ["."] srcDirs pkg
-        putStrLn "Creating semaphore..."
-        withCreateSem $ \sem -> do
-          putStrLn "Starting notification manager..."
-          f $ withManager $ \mgr -> do
-            chan <- newChan
-            let w dir = watchTreeChan mgr (repoRoot </> fromString dir) eventPred chan
-            mapM_ w srcs
-            putStrLn "Starting initial build..."
-            build sem repoRoot
-            putStrLn "Starting event loop..."
-            forever $ flushChan chan >> build sem repoRoot
+      debug "Creating lock..."
+      sem <- newLock
+      debug "Starting notification manager..."
+      f $ do
+        mainThread <- liftIO myThreadId
+        liftIO $ do
+          let handler = Catch $ throwTo mainThread $ ExitSuccess
+          let exitOn sig = void $ installHandler sig handler Nothing
+          debug "Installing signal handlers..."
+          exitOn sigTERM
+          exitOn sigINT
+        debug "Writing pidfile..."
+        writePidFile
+        debug "Starting event loop..."
+        let
+        { w = (emptyWatch $ repoRoot)
+          { wRecurse  = True
+          , wPred     = srcPred
+          }
+        }
+        watchForever [w] $ build sem
+      return $ emptySt sem
 
-flushChan :: Chan a -> IO ()
-flushChan chan = r >> f
-  where
-    r = void $ readChan chan
-    f = isEmptyChan chan >>= \e -> case e of
-      True  -> return ()
-      False -> flushChan chan
-
-build :: Semaphore -> FilePath -> IO ()
-build sem repoRoot = withLock sem $ do
-  outHandle <- openFile (encodeString $ outputFile repoRoot) WriteMode
-  (_, _, _, ph) <-
-    createProcess
-    $ (proc "cabal-dev" ["build"])
-      { cwd = Just $ encodeString repoRoot
-      , std_in = Inherit
-      , std_out = Inherit
-      , std_err = UseHandle outHandle
-      }
-  hClose outHandle
-  code <- waitForProcess ph
-  let writeCode = writeFile (encodeString $ statusFile repoRoot) . show
+build :: Semaphore -> I ()
+build sem = withLock sem $ do
+  repoRoot <- asksString envRepoRoot
+  outHandle <- asksString envOutputFile >>= liftIO . flip openFile WriteMode
+  code <- liftIO $ do
+    (_, _, _, ph) <-
+      createProcess
+      $ (proc "cabal-dev" ["build"])
+        { cwd = Just repoRoot
+        , std_in = Inherit
+        , std_out = Inherit
+        , std_err = UseHandle outHandle
+        }
+    hClose outHandle
+    waitForProcess ph
   case code of
     ExitSuccess -> writeCode 0
     ExitFailure n -> writeCode n
 
-stop :: IO ()
+writeCode :: (MonadReader Env m, MonadIO m) => Int -> m ()
+writeCode n = asksString envStatusFile >>= liftIO . flip writeFile (show n)
+
+stop :: I ()
 stop = do
-  (_, pid) <- prepare
+  pid <- readPidFile
   case pid of
     Nothing -> return ()
-    Just pid -> signalProcess sigTERM pid
+    Just pid -> liftIO $ signalProcess sigTERM pid
 
-waitForBuild :: IO ()
+waitForBuild :: M ()
 waitForBuild = do
-  (repoRoot, _) <- prepare
-  status <- withLock' $ do
-    readFile (encodeString $ outputFile repoRoot) >>= putStr
-    statusStr <- readFile (encodeString $ statusFile repoRoot)
+  (liftIO . exitWith =<<) . (access stSemaphore >>=) . flip withLock $ do
+    asksString envOutputFile >>= liftIO . readFile >>= liftIO . putStr
+    statusStr <- asksString envStatusFile >>= liftIO . readFile
     return $ case readMaybe statusStr of
       Nothing -> ExitFailure 42
       Just 0  -> ExitSuccess
       Just n  -> ExitFailure n
-  exitWith status
 
-filePred :: FilePath -> Event -> Bool
-filePred fp e = fp == eventFile e
-
-watchBuilds :: IO ()
+watchBuilds :: M ()
 watchBuilds = do
-  (repoRoot, _) <- prepare
-  withManager $ \mgr -> do
-    chan <- newChan
-    watchDirChan mgr repoRoot (filePred $ statusFile repoRoot) chan
-    lessProc <- dump repoRoot
-    let f lessProc = flushChan chan >> terminateProcess lessProc >> dump repoRoot >>= f
-    f lessProc
+  statusFile <- asks (envStatusFile ^$)
+  let
+  { w = (emptyWatch $ directory statusFile)
+    { wPred = PredDisj [PredPath statusFile, PredInverse PredRemoved]
+    }
+  }
+  watchOnce [w] lessDump
 
-clearTerminal :: IO ProcessHandle
-clearTerminal = runProcess "clear" [] Nothing Nothing Nothing Nothing Nothing
+lessDump :: M ()
+lessDump = void $
+  access stLessProcess >>= maybe (return ()) (liftIO . terminateProcess)
+  >>
+  dump >>= (stLessProcess ~=) . Just
 
-dump :: FilePath -> IO ProcessHandle
-dump repoRoot = do
+clearTerminal :: (MonadIO m) => m ProcessHandle
+clearTerminal = liftIO $ runProcess "clear" [] Nothing Nothing Nothing Nothing Nothing
+
+dump :: M ProcessHandle
+dump = do
   clearProc <- clearTerminal
-  let lessFileString = encodeString $ lessFile repoRoot
-  withLock'
-    $ readFile (encodeString $ outputFile repoRoot)
-      >>= writeFile lessFileString
-  outHandle <- openFile lessFileString ReadMode
-  void $ waitForProcess clearProc
-  lessProc <- runProcess "less" [] Nothing Nothing (Just outHandle) Nothing Nothing
-  hClose outHandle
+  lessFileString <- asksString envLessFile
+  (access stSemaphore >>=) . flip withLock
+    $ asksString envRepoRoot
+      >>= liftIO . readFile
+      >>= liftIO . writeFile lessFileString
+  outHandle <- liftIO $ openFile lessFileString ReadMode
+  void $ liftIO $ waitForProcess clearProc
+  lessProc <-
+    liftIO
+    $ runProcess "less" [] Nothing Nothing (Just outHandle) Nothing Nothing
+  liftIO $ hClose outHandle
   return lessProc
 

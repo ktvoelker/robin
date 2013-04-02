@@ -1,15 +1,29 @@
 TODO
 ====
 
-Make our output go to a logfile in daemon mode
+Write tests!
 
-  And to both a logfile and stderr in debug mode
+Control the terminal rather than relying on "clear" and "less"
+
+  We could try to show some nifty build progress at the top
+
+  We could also show the OK status rather than an empty page
+
+  We could even show the project title from the cabal file!
+
+Replace uses of System.IO with conduit
 
 Implement clean command
 
   This will, of course, immediately rebuild
 
+Generate the .less file via hard-linking to .output
+
+  Unlink .output before writing new output
+
 Move all the special files into a single .cabal-dev-build subdirectory
 
 Make it so there's only ever one daemon no matter how many projects need building
+
+Make the debug log output optional
 

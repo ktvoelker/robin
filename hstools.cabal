@@ -50,7 +50,18 @@ Executable cabal-dev-build-daemon
     Cabal           >= 1.16  && < 1.17,
     system-filepath >= 0.4.7 && < 0.5,
     text            >= 0.11  && < 0.12,
-    unix            >= 2.6   && < 2.7
+    unix            >= 2.6   && < 2.7,
+    -- TODO versions
+    resourcet,
+    mtl,
+    data-lens,
+    data-lens-fd,
+    data-lens-template,
+    lifted-base,
+    monad-control
+  default-extensions:
+    FlexibleContexts
   other-extensions:
     OverloadedStrings
+    TemplateHaskell
 
