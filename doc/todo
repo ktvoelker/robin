@@ -1,10 +1,5 @@
-
 TODO
 ====
-
-Use a Reader to hold the repo root
-
-  And the semaphore?
 
 Make our output go to a logfile in daemon mode
 
