@@ -44,22 +44,30 @@ startDaemon = do
   }
   start $ liftBaseDiscard daemonize . (openLog >>)
 
-usage :: String
-usage = "Usage: cabal-dev-build-daemon (start | stop | build | watch | debug)"
+usage :: IO ()
+usage = hPutStrLn stderr
+  "Usage: cabal-dev-build-daemon (start | stop | build | watch | debug)"
+
+commands :: [(String, FilePath -> IO ())]
+commands =
+  [ ("start" , \rr -> runI rr startDaemon >>= check)
+  , ("debug" , \rr -> runI rr (start id) >>= check)
+  , ("stop"  , \rr -> runI rr stop >>= check)
+  , ("build" , \rr -> runM rr startDaemon waitForBuild >>= check)
+  , ("watch" , \rr -> runM rr startDaemon watchBuilds >>= check)
+  , ("help"  , const usage)
+  ]
+
+errExit :: IO ()
+errExit = usage >> exitFailure
+
+command :: FilePath -> [String] -> IO ()
+command rr []     = command rr ["build"]
+command rr [name] = maybe errExit ($ rr) $ lookup name commands
+command _  _      = errExit
 
 main :: IO ()
-main = do
-  args <- getArgs
-  repoRoot <- fromString <$> getRepoRoot
-  case args of
-    ["start"] -> runI repoRoot startDaemon >>= check
-    ["debug"] -> runI repoRoot (start id) >>= check
-    ["stop"]  -> runI repoRoot stop >>= check
-    ["build"] -> runM repoRoot startDaemon waitForBuild >>= check
-    ["watch"] -> runM repoRoot startDaemon watchBuilds >>= check
-    _         -> do
-      hPutStrLn stderr usage
-      exitFailure
+main = (fromString <$> getRepoRoot) >>= \rr -> getArgs >>= command rr
 
 exts :: [String]
 exts = ["hs", "lhs", "cabal"]
