@@ -9,6 +9,16 @@ Pidfile isn't deleted when running daemonized
     It might make sense that ResourceT doesn't work from one side of daemonize to the
     other
 
+    Split things apart:
+
+      No I St argument to runM
+
+      Wrap daemonize around the runI (no need for MonadBaseControl magic)
+
+      runI and runM find the repoRoot for themselves
+
+      withLock opens the semaphore for itself (take it out of the St)
+
 Watch mode died with error "openFile: inappropriate type (is a directory)"
 
 Write tests!
