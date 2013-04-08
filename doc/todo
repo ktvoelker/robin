@@ -1,5 +1,15 @@
+
 TODO
 ====
+
+Pidfile isn't deleted when running daemonized
+
+  Maybe this is because it's daemonized?
+
+    It might make sense that ResourceT doesn't work from one side of daemonize to the
+    other
+
+Watch mode died with error "openFile: inappropriate type (is a directory)"
 
 Write tests!
 
@@ -26,4 +36,8 @@ Move all the special files into a single .cabal-dev-build subdirectory
 Make it so there's only ever one daemon no matter how many projects need building
 
 Make the debug log output optional
+
+  Or make it rotate the log
+
+The log output would be more useful with timestamps
 

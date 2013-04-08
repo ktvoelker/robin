@@ -89,7 +89,11 @@ start f = do
       f $ do
         mainThread <- liftIO myThreadId
         liftIO $ do
-          let handler = Catch $ throwTo mainThread $ ExitSuccess
+          let
+          { handler = Catch $ do
+              debug "Caught signal; throwing ExitSuccess to main thread"
+              throwTo mainThread $ ExitSuccess
+          }
           let exitOn sig = void $ installHandler sig handler Nothing
           debug "Installing signal handlers..."
           exitOn sigTERM
