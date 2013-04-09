@@ -15,16 +15,17 @@ import Data.Text.IO (putStrLn)
 import Filesystem.Path.CurrentOS
 import GHC.Exts (fromString)
 import System.IO (hFlush, stdout)
-import System.Posix.Semaphore
 import System.Process
+
+import Util
 
 data St =
   St
-  { _stSemaphore   :: Semaphore
-  , _stLessProcess :: Maybe ProcessHandle
+  { _stLessProcess :: Maybe ProcessHandle
   }
 
-emptySt sem = St sem Nothing
+emptySt :: St
+emptySt = St Nothing
 
 data Env =
   Env
@@ -39,10 +40,10 @@ data Env =
 
 makeLenses [''St, ''Env]
 
-emptyEnv :: FilePath -> Env
+emptyEnv :: String -> Env
 emptyEnv rr =
   Env
-  { _envRepoRoot = rr
+  { _envRepoRoot   = rr'
   , _envStatusFile = specialFile "status"
   , _envOutputFile = specialFile "output"
   , _envLessFile   = specialFile "less"
@@ -50,7 +51,8 @@ emptyEnv rr =
   , _envLogFile    = specialFile "log"
   }
   where
-    specialFile n = addExtension (rr </> ".cabal-dev-build-daemon") n
+    rr' = fromString rr
+    specialFile n = addExtension (rr' </> ".cabal-dev-build-daemon") n
 
 data Err = Err
   deriving (Show)
@@ -63,11 +65,11 @@ type I = ReaderT Env (ErrorT Err (ResourceT IO))
 
 type M = StateT St I
 
-runI :: FilePath -> I a -> IO (Either Err a)
-runI repoRoot m = runResourceT $ runErrorT $ runReaderT m $ emptyEnv repoRoot
+runI :: I a -> IO (Either Err a)
+runI m = getRepoRoot >>= runResourceT . runErrorT . runReaderT m . emptyEnv
 
-runM :: FilePath -> I St -> M a -> IO (Either Err a)
-runM repoRoot init action = runI repoRoot $ init >>= evalStateT action
+runM :: M a -> IO (Either Err a)
+runM = runI . flip evalStateT emptySt
 
 asksString :: (MonadReader Env m) => Lens Env FilePath -> m String
 asksString lens = asks $ encodeString . (lens ^$)

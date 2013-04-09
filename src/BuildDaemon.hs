@@ -6,17 +6,14 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Reader
-import Control.Monad.Trans.Control
 import Control.Monad.Trans.Resource
-import Data.Functor
 import Data.Lens
 import Filesystem.Path.CurrentOS
-import GHC.Exts (fromString)
-import Prelude hiding (FilePath)
 import System.Environment
 import System.Exit
-import System.IO hiding (FilePath)
+import System.IO
 import System.Posix.Daemonize
+import System.Posix.Directory
 import System.Posix.IO
 import System.Posix.Semaphore
 import System.Posix.Signals
@@ -31,43 +28,50 @@ import Util
 check :: Either Err a -> IO ()
 check = maybe (return ()) print . leftMaybe
 
-startDaemon :: I St
+startDaemon :: IO ()
 startDaemon = do
-  logFileString <- asksString envLogFile
-  let
-  { openLog = do
-      (hKey, logHandle) <- allocate (openFile logFileString AppendMode) hClose
-      (fdKey, logFd) <- allocate (handleToFd logHandle) closeFd
-      void $ unprotect hKey
-      void $ allocate (dupTo logFd stdOutput) closeFd
-      release fdKey
-  }
-  start $ liftBaseDiscard daemonize . (openLog >>)
+  debug "Starting daemon..."
+  wd <- getWorkingDirectory
+  daemonize $ do
+    changeWorkingDirectory wd
+    (check =<<) . runI $ do
+      logFileString <- asksString envLogFile
+      let
+      { openLog = do
+          (hKey, logHandle) <- allocate (openFile logFileString AppendMode) hClose
+          (fdKey, logFd) <- allocate (handleToFd logHandle) closeFd
+          void $ unprotect hKey
+          void $ allocate (dupTo logFd stdOutput) closeFd
+          release fdKey
+      }
+      openLog
+      debug "Daemon started; log opened."
+      start
 
 usage :: IO ()
 usage = hPutStrLn stderr
   "Usage: cabal-dev-build-daemon (start | stop | build | watch | debug)"
 
-commands :: [(String, FilePath -> IO ())]
+commands :: [(String, IO ())]
 commands =
-  [ ("start" , \rr -> runI rr startDaemon >>= check)
-  , ("debug" , \rr -> runI rr (start id) >>= check)
-  , ("stop"  , \rr -> runI rr stop >>= check)
-  , ("build" , \rr -> runM rr startDaemon waitForBuild >>= check)
-  , ("watch" , \rr -> runM rr startDaemon watchBuilds >>= check)
-  , ("help"  , const usage)
+  [ ("start" , startDaemon)
+  , ("debug" , runI start >>= check)
+  , ("stop"  , runI stop >>= check)
+  , ("build" , startDaemon >> runM waitForBuild >>= check)
+  , ("watch" , startDaemon >> runM watchBuilds >>= check)
+  , ("help"  , usage)
   ]
 
 errExit :: IO ()
 errExit = usage >> exitFailure
 
-command :: FilePath -> [String] -> IO ()
-command rr []     = command rr ["build"]
-command rr [name] = maybe errExit ($ rr) $ lookup name commands
-command _  _      = errExit
+command :: [String] -> IO ()
+command []     = command ["build"]
+command [name] = maybe errExit id $ lookup name commands
+command _      = errExit
 
 main :: IO ()
-main = (fromString <$> getRepoRoot) >>= \rr -> getArgs >>= command rr
+main = fst (startDaemon, getArgs >>= command)
 
 exts :: [String]
 exts = ["hs", "lhs", "cabal"]
@@ -75,18 +79,17 @@ exts = ["hs", "lhs", "cabal"]
 srcPred :: WatchPred
 srcPred = PredDisj $ map PredExtension exts
 
-start :: (I () -> I ()) -> I St
-start f = do
+start :: I ()
+start = do
   repoRoot <- asks (envRepoRoot ^$)
   readPidFile >>= \pid -> case pid of
     Just pid -> do
       debugs $ "Daemon already running: pid " ++ show pid
-      emptySt <$> findLock
     Nothing -> do
       debug "Creating lock..."
       sem <- newLock
       debug "Starting notification manager..."
-      f $ do
+      do
         mainThread <- liftIO myThreadId
         liftIO $ do
           let
@@ -108,7 +111,6 @@ start f = do
           }
         }
         watchForever [w] $ build sem
-      return $ emptySt sem
 
 build :: Semaphore -> I ()
 build sem = withLock sem $ do
@@ -141,7 +143,7 @@ stop = do
 
 waitForBuild :: M ()
 waitForBuild = do
-  (liftIO . exitWith =<<) . (access stSemaphore >>=) . flip withLock $ do
+  (liftIO . exitWith =<<) . (lift findLock >>=) . flip withLock $ do
     asksString envOutputFile >>= liftIO . readFile >>= liftIO . putStr
     statusStr <- asksString envStatusFile >>= liftIO . readFile
     return $ case readMaybe statusStr of
@@ -172,7 +174,7 @@ dump :: M ProcessHandle
 dump = do
   clearProc <- clearTerminal
   lessFileString <- asksString envLessFile
-  (access stSemaphore >>=) . flip withLock
+  (lift findLock >>=) . flip withLock
     $ asksString envRepoRoot
       >>= liftIO . readFile
       >>= liftIO . writeFile lessFileString
