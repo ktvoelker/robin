@@ -15,6 +15,7 @@ import System.IO
 import System.Posix.Daemonize
 import System.Posix.Directory
 import System.Posix.IO
+import System.Posix.Process
 import System.Posix.Semaphore
 import System.Posix.Signals
 import System.Process
@@ -30,9 +31,9 @@ check = maybe (return ()) print . leftMaybe
 
 startDaemon :: IO ()
 startDaemon = do
-  debug "Starting daemon..."
   wd <- getWorkingDirectory
-  daemonize $ do
+  -- Fork before calling daemonize, because it calls exit after forking the daemon.
+  void $ forkProcess $ daemonize $ do
     changeWorkingDirectory wd
     (check =<<) . runI $ do
       logFileString <- asksString envLogFile
@@ -71,7 +72,7 @@ command [name] = maybe errExit id $ lookup name commands
 command _      = errExit
 
 main :: IO ()
-main = fst (startDaemon, getArgs >>= command)
+main = getArgs >>= command
 
 exts :: [String]
 exts = ["hs", "lhs", "cabal"]
@@ -156,10 +157,10 @@ watchBuilds = do
   statusFile <- asks (envStatusFile ^$)
   let
   { w = (emptyWatch $ directory statusFile)
-    { wPred = PredDisj [PredPath statusFile, PredInverse PredRemoved]
+    { wPred = PredConj [PredPath statusFile, PredInverse PredRemoved]
     }
   }
-  watchOnce [w] lessDump
+  watchForever [w] lessDump
 
 lessDump :: M ()
 lessDump = void $
@@ -175,7 +176,7 @@ dump = do
   clearProc <- clearTerminal
   lessFileString <- asksString envLessFile
   (lift findLock >>=) . flip withLock
-    $ asksString envRepoRoot
+    $ asksString envOutputFile
       >>= liftIO . readFile
       >>= liftIO . writeFile lessFileString
   outHandle <- liftIO $ openFile lessFileString ReadMode

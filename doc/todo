@@ -2,8 +2,6 @@
 TODO
 ====
 
-Watch mode died with error "openFile: inappropriate type (is a directory)"
-
 Find the repo root based on the presence of a cabal file (don't use git)
 
 Write tests!

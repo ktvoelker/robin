@@ -65,7 +65,6 @@ watchPrim
   :: (MonadBaseControl IO m, MonadIO m)
   => [Watch] -> (Chan Event -> m a) -> m a
 watchPrim xs f = bracket (liftIO startManager) (liftIO . stopManager) $ \mgr -> do
-  mapM_ (debugs . show) xs
   chan <- liftIO newChan
   let r x = if wRecurse x then watchTreeChan else watchDirChan
   let w x = r x mgr (wRootDir x) (\e -> wEvalPred e $ wPred x) chan
