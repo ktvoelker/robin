@@ -113,22 +113,30 @@ start = do
         }
         watchForever [w] $ build sem
 
-build :: Semaphore -> I ()
-build sem = withLock sem $ do
+-- TODO use ResourceT to be safer about the handle
+runBuildProcess :: CreateProcess -> I ExitCode
+runBuildProcess p = do
   repoRoot <- asksString envRepoRoot
   outHandle <- asksString envOutputFile >>= liftIO . flip openFile WriteMode
-  code <- liftIO $ do
-    (_, _, _, ph) <-
-      createProcess
-      $ (proc "cabal-dev" ["build"])
-        { cwd = Just repoRoot
-        , std_in = Inherit
-        , std_out = Inherit
-        , std_err = UseHandle outHandle
-        }
+  liftIO $ do
+    (_, _, _, ph) <- createProcess $ p
+      { cwd = Just repoRoot
+      , std_in = Inherit
+      , std_out = Inherit
+      , std_err = UseHandle outHandle
+      }
+    code <- waitForProcess ph
     hClose outHandle
-    waitForProcess ph
-  case code of
+    return code
+
+build :: Semaphore -> I ()
+build sem = withLock sem $ do
+  code <- runBuildProcess $ proc "cabal-dev" ["configure", "--enable-tests"]
+  -- TODO use something monadic to chain these process calls together nicely
+  code' <- case code of
+    ExitFailure _ -> return code
+    ExitSuccess -> runBuildProcess $ proc "cabal-dev" ["build"]
+  case code' of
     ExitSuccess -> writeCode 0
     ExitFailure n -> writeCode n
 

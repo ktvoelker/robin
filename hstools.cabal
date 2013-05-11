@@ -61,6 +61,7 @@ Executable cabal-dev-build-daemon
     monad-control
   default-extensions:
     FlexibleContexts
+    LambdaCase
   other-extensions:
     OverloadedStrings
     TemplateHaskell
