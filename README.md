@@ -37,4 +37,4 @@ Note: the _current project_ is identified by the lone cabal file in the root dir
 ghci-dev
 --------
 
-TODO
+This tool is similar to `cabal-dev ghci`. I can't remember why it exists.
