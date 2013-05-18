@@ -5,6 +5,7 @@ import Control.Applicative
 import Control.Monad.Trans.Resource
 import Control.Monad.State
 import Data.Lens
+import Data.Ratio
 import Data.Word
 import Graphics.Vty hiding ((<|>))
 import qualified Graphics.Vty
@@ -38,6 +39,11 @@ wordToInt w
   | w > fromIntegral (maxBound :: Int) = error "wordToInt: overflow"
   | otherwise = fromIntegral w
 
+intToWord :: Int -> Word
+intToWord z
+  | z < 0 = error "intToWord: negative"
+  | otherwise = fromIntegral z
+
 fit1 :: Translator -> Padder -> Cropper -> Sizer -> Align -> Word -> Image -> Image
 fit1 trans pad crop sizer align avail img =
   pad padExcess . trans (wordToInt transExcess) . crop avail $ img
@@ -70,8 +76,10 @@ render = do
   title <- pad (half, 1) <$> access iTitle
   progress <- access iProgress
   sh <- screenHeight
-  body <- pad (sw, sh - 1) <$> access iBody
-  return . pic_for_image $ (title `beside` progress) <-> body
+  -- TODO crop body
+  body <- pad (sw - 1, sh - 1) . crop (sw - 1, sh - 1) <$> access iBody
+  scroll <- access iScroll
+  return . pic_for_image $ (title `beside` progress) <-> (body `beside` scroll)
 
 rebuild :: CM ()
 rebuild = access cVty >>= \vty -> render >>= liftIO . update vty
@@ -125,12 +133,50 @@ setProgress progress = do
   where
     progress' = toRational <$> progress
 
-paragraph :: Attr -> String -> Image
-paragraph attr = foldr (<->) empty_image . map (string attr) . lines
+paragraph :: Attr -> [String] -> Image
+paragraph attr = foldr (<->) empty_image . map (line attr)
+
+line :: Attr -> String -> Image
+line attr "" = string attr " "
+line attr xs = string attr xs
+
+renderBody :: String -> CM ()
+renderBody xs = do
+  sh <- screenHeight
+  let ls = lines xs
+  void $ cBody ~= ls
+  void $ iBody ~= paragraph def_attr (take (wordToInt $ sh - 1) ls)
+
+scrollGapDisplaySize :: (Integral a, Integral b) => Word -> a -> b -> Word
+scrollGapDisplaySize avail gapLines totalLines =
+  fromInteger $ max (min n 1) $ round (clamp (n % d) * toRational avail)
+  where
+    n = fromIntegral gapLines
+    d = fromIntegral totalLines
+
+calcScroll :: Word -> Word -> Word -> (Word, Word, Word)
+calcScroll avail preLines postLines = (preDisplay, visDisplay, postDisplay)
+  where
+    visLines = min postLines avail
+    totalLines = preLines + postLines
+    preDisplay = scrollGapDisplaySize avail preLines totalLines
+    postDisplay = scrollGapDisplaySize avail (postLines - visLines) totalLines
+    visDisplay = avail - preDisplay - postDisplay
+
+renderScroll :: CM ()
+renderScroll = do
+  avail <- (subtract 1) <$> screenHeight
+  preLines <- intToWord . length <$> access cBodyPrev
+  postLines <- intToWord . length <$> access cBody
+  let (preDisplay, visDisplay, postDisplay) = calcScroll avail preLines postLines
+  let visImg = char_fill def_attr '|' 1 visDisplay
+  let img = pad (1, postDisplay) $ translate (0, wordToInt preDisplay) $ visImg
+  void $ iScroll ~= img
 
 setBody :: String -> CM ()
 setBody xs = do
-  void $ cBody ~= xs
-  void $ iBody ~= string def_attr xs
+  void $ cBodyPrev ~= []
+  renderBody xs
+  renderScroll
   rebuild
 

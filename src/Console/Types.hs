@@ -8,15 +8,17 @@ import Graphics.Vty
 data Console = Console
   { _cTitle    :: String
   , _cProgress :: Maybe Rational
-  , _cBody     :: String
+  , _cBodyPrev :: [String]
+  , _cBody     :: [String]
   , _iTitle    :: Image
   , _iProgress :: Image
   , _iBody     :: Image
+  , _iScroll   :: Image
   , _cVty      :: Vty
   }
 
 mkConsole :: Vty -> Console
-mkConsole = Console "" Nothing "" empty_image empty_image empty_image
+mkConsole = Console "" Nothing  [] [] empty_image empty_image empty_image empty_image
 
 makeLenses [''Console]
 

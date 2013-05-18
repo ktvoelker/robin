@@ -6,11 +6,7 @@ Finish the Console library
 
   Scrolling controls
 
-  Vertical scrollbar for body
-
   Color
-
-  Pages? (separated by blank lines - does this work with the compiler output?)
 
 Control the terminal rather than relying on "clear" and "less"
 
@@ -19,6 +15,8 @@ Control the terminal rather than relying on "clear" and "less"
   We could also show the OK status rather than an empty page
 
   We could even show the project title from the cabal file!
+
+Show errors one at a time
 
 Disable optimization for faster runs
 
