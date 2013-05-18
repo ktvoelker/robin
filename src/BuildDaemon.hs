@@ -24,6 +24,7 @@ import BuildDaemon.Lock
 import BuildDaemon.PidFile
 import BuildDaemon.Types
 import BuildDaemon.Watch
+import qualified Console ()
 import Util
 
 check :: Either Err a -> IO ()

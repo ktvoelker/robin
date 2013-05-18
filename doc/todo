@@ -6,6 +6,8 @@ Find the repo root based on the presence of a cabal file (don't use git)
 
 Write tests!
 
+Write a command that runs "cabal test"
+
 Control the terminal rather than relying on "clear" and "less"
 
   We could try to show some nifty build progress at the top

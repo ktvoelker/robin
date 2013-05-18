@@ -1,0 +1,22 @@
+
+Ideas for Tools
+===============
+
+Replayable ghci sessions?
+
+Better ghci/vim integration?
+
+  Interactive, like the old class project
+
+Import management
+  
+  Fold imports but nothing else?
+
+  Commands to jump around in them?
+
+Getting documentation on Hackage / Hoogle / Hayoo
+
+  Use the packages in the .cabal file
+
+  Or use the imports
+

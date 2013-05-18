@@ -58,7 +58,8 @@ Executable cabal-dev-build-daemon
     data-lens-fd,
     data-lens-template,
     lifted-base,
-    monad-control
+    monad-control,
+    vty
   default-extensions:
     FlexibleContexts
     LambdaCase
