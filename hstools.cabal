@@ -87,4 +87,5 @@ Executable console-test
     resourcet
   default-extensions:
     TupleSections
+    LambdaCase
 

@@ -6,8 +6,6 @@ Finish the Console library
 
   Scrolling controls
 
-  Color
-
 Control the terminal rather than relying on "clear" and "less"
 
   We could try to show some nifty build progress at the top

@@ -96,8 +96,14 @@ screenHeight = region_height <$> screenSize
 setTitle :: String -> CM ()
 setTitle xs = do
   void $ cTitle ~= xs
-  void $ iTitle ~= string def_attr xs
+  renderTitle
   rebuild
+
+renderTitle :: CM ()
+renderTitle = do
+  attr <- topAttr
+  xs <- access cTitle
+  void $ iTitle ~= string attr xs
 
 clamp :: (Num a, Ord a) => a -> a
 clamp n | n < 0     = 0
@@ -107,31 +113,33 @@ clamp n | n < 0     = 0
 progressWidth :: Rational -> Word -> Word
 progressWidth progress avail = round $ clamp progress * toRational avail
 
-leftProgressDelim = char def_attr '['
+leftProgressDelim attr = char attr '['
 
-rightProgressDelim = char def_attr ']'
+rightProgressDelim attr = char attr ']'
 
-renderProgress :: Rational -> Word -> Image
-renderProgress progress avail =
-  leftProgressDelim
-  `beside` char_fill def_attr '=' complete 1
-  `beside` char_fill def_attr '·' incomplete 1
-  `beside` rightProgressDelim
+drawProgress :: Attr -> Rational -> Word -> Image
+drawProgress attr progress avail =
+  leftProgressDelim attr
+  `beside` char_fill attr '=' complete 1
+  `beside` char_fill attr '·' incomplete 1
+  `beside` rightProgressDelim attr
   where
     avail' = round $ (toRational avail / 2) - 2
     complete = progressWidth progress avail'
     incomplete = avail' - complete
 
+renderProgress :: CM ()
+renderProgress = do
+  attr <- topAttr
+  p <- access cProgress
+  sw <- screenWidth
+  void $ iProgress ~= maybe (const empty_image) (drawProgress attr) p sw
+
 setProgress :: (Real a) => Maybe a -> CM ()
 setProgress progress = do
-  void $ cProgress ~= progress'
-  void $
-    screenWidth
-    >>= (iProgress ~=)
-        . maybe (const empty_image) renderProgress progress'
+  void $ cProgress ~= (toRational <$> progress)
+  renderProgress
   rebuild
-  where
-    progress' = toRational <$> progress
 
 paragraph :: Attr -> [String] -> Image
 paragraph attr = foldr (<->) empty_image . map (line attr)
@@ -140,12 +148,11 @@ line :: Attr -> String -> Image
 line attr "" = string attr " "
 line attr xs = string attr xs
 
-renderBody :: String -> CM ()
-renderBody xs = do
+renderBody :: CM ()
+renderBody = do
   sh <- screenHeight
-  let ls = lines xs
-  void $ cBody ~= ls
-  void $ iBody ~= paragraph def_attr (take (wordToInt $ sh - 1) ls)
+  void $ access cBody >>= (iBody ~=) . paragraph def_attr . take (wordToInt $ sh - 1)
+  renderScroll
 
 scrollGapDisplaySize :: (Integral a, Integral b) => Word -> a -> b -> Word
 scrollGapDisplaySize avail gapLines totalLines =
@@ -176,7 +183,51 @@ renderScroll = do
 setBody :: String -> CM ()
 setBody xs = do
   void $ cBodyPrev ~= []
-  renderBody xs
-  renderScroll
+  void $ cBody ~= lines xs
+  renderBody
+  rebuild
+
+swap :: (a, b) -> (b, a)
+swap (a, b) = (b, a)
+
+flipElems :: Int -> [a] -> [a] -> ([a], [a])
+flipElems 0 from to = (from, to)
+flipElems n from to | n < 0 = swap $ flipElems (negate n) to from
+flipElems _ [] to = ([], to)
+flipElems n (x : xs) to = flipElems (n - 1) xs (x : to)
+
+scrollDown :: Int -> CM ()
+scrollDown n = do
+  pre <- access cBodyPrev
+  post <- access cBody
+  let (post', pre') = flipElems n post pre
+  void $ cBodyPrev ~= pre'
+  void $ cBody ~= post'
+  renderBody
+  rebuild
+
+scrollUp :: Int -> CM ()
+scrollUp = scrollDown . negate
+
+colors :: Color -> Color -> Attr -> Attr
+colors fg bg = (`with_fore_color` fg) . (`with_back_color` bg)
+
+buildStateColors :: BuildState -> Attr -> Attr
+buildStateColors = uncurry colors . \case
+  BuildSuccess -> (white, green)
+  BuildFailure -> (white, red)
+  BuildRunning -> (white, blue)
+
+buildStateAttr :: BuildState -> Attr
+buildStateAttr = ($ def_attr `with_style` bold) . buildStateColors
+
+topAttr :: CM Attr
+topAttr = buildStateAttr <$> access cState
+
+setBuildState :: BuildState -> CM ()
+setBuildState bs = do
+  void $ cState ~= bs
+  renderTitle
+  renderProgress
   rebuild
 

@@ -12,4 +12,6 @@ main = runCM $ do
   setProgress . Just $ (0.4 :: Rational)
   liftIO (readFile "doc/todo") >>= setBody
   void $ nextEvent
+  scrollDown 5
+  void $ nextEvent
 
