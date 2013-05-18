@@ -63,7 +63,28 @@ Executable cabal-dev-build-daemon
   default-extensions:
     FlexibleContexts
     LambdaCase
+    TupleSections
   other-extensions:
     OverloadedStrings
     TemplateHaskell
+
+Executable console-test
+  main-is: Console/Test.hs
+  default-language: Haskell2010
+  hs-source-dirs: src
+  ghc-options:
+    -Wall
+    -Werror
+    -fno-warn-name-shadowing
+    -fno-warn-missing-signatures
+    -fno-warn-orphans
+  build-depends:
+    base            >= 4     && < 5,
+    vty,
+    data-lens-template,
+    data-lens-fd,
+    mtl,
+    resourcet
+  default-extensions:
+    TupleSections
 

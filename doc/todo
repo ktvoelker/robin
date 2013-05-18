@@ -2,11 +2,15 @@
 TODO
 ====
 
-Find the repo root based on the presence of a cabal file (don't use git)
+Finish the Console library
 
-Write tests!
+  Scrolling controls
 
-Write a command that runs "cabal test"
+  Vertical scrollbar for body
+
+  Color
+
+  Pages? (separated by blank lines - does this work with the compiler output?)
 
 Control the terminal rather than relying on "clear" and "less"
 
@@ -15,6 +19,16 @@ Control the terminal rather than relying on "clear" and "less"
   We could also show the OK status rather than an empty page
 
   We could even show the project title from the cabal file!
+
+Disable optimization for faster runs
+
+Use new parallel option
+
+Find the repo root based on the presence of a cabal file (don't use git)
+
+Write tests!
+
+Write a command that runs "cabal test"
 
 Replace uses of System.IO with conduit
 
