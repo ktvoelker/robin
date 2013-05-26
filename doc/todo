@@ -6,6 +6,10 @@ Finish the Console library
 
   Fix the scrollbar rendering - it seems to think the screen is bigger than it is
 
+  Perhaps it would be cleaner to have a "free monad" of specific drawing commands
+
+  Add a clean way to quit
+
 Control the terminal rather than relying on "clear" and "less"
 
   We could try to show some nifty build progress at the top
