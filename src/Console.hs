@@ -2,6 +2,7 @@
 module Console where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Monad.Trans.Resource
 import Control.Monad.State
 import Data.Lens
@@ -17,12 +18,48 @@ beside = (Graphics.Vty.<|>)
 
 infixr 5 `beside`
 
-type CM a = StateT Console (ResourceT IO) a
+type CM a = StateT Console IO a
 
-runCM :: CM a -> IO a
-runCM m = runResourceT $ do
-  (key, vty) <- allocate mkVty shutdown
-  evalStateT m (mkConsole vty) <* release key
+data ConsoleHandle =
+  ConsoleHandle
+  { cRead  :: IO Event
+  , cWrite :: CM () -> IO ()
+  }
+
+newConsole :: ResourceT IO ConsoleHandle
+newConsole = do
+  (_, vty) <- allocate mkVty shutdown
+  ic <- liftIO newChan
+  oc <- liftIO newChan
+  void $ allocate (forkIO $ inputThread ic oc $ next_event vty) killThread
+  void $ allocate (forkIO $ outputThread oc $ mkConsole vty) killThread
+  return $ ConsoleHandle { cRead = readChan ic, cWrite = writeChan oc }
+
+inputThread :: Chan Event -> Chan (CM ()) -> IO Event -> IO ()
+inputThread events console next =
+  forever $ do
+    event <- next
+    maybe (writeChan events event) (writeChan console) $ handleEvent event
+
+outputThread :: Chan (CM ()) -> Console -> IO ()
+outputThread chan = void . runStateT (forever $ join $ liftIO $ readChan chan)
+
+handleEvent :: Event -> Maybe (CM ())
+handleEvent (EvKey KUp          []) = Just $ scrollUp 1
+handleEvent (EvKey KDown        []) = Just $ scrollDown 1
+handleEvent (EvKey KPageUp      []) = Just $ pageSize >>= scrollUp
+handleEvent (EvKey KPageDown    []) = Just $ pageSize >>= scrollDown
+handleEvent (EvKey (KASCII ' ') []) = Just $ pageSize >>= scrollDown
+handleEvent (EvKey KHome        []) = Just $ scrollTo 0
+handleEvent (EvKey KEnd         []) = Just $ bodyLength >>= scrollTo
+handleEvent _                       = Nothing
+
+pageSize :: CM Int
+-- TODO base this on the actual screen height
+pageSize = return 20
+
+bodyLength :: CM Int
+bodyLength = length <$> access cBody
 
 data Align = Start | CenterStart | CenterEnd | End
 
@@ -208,6 +245,16 @@ scrollDown n = do
 
 scrollUp :: Int -> CM ()
 scrollUp = scrollDown . negate
+
+scrollTo :: Int -> CM ()
+scrollTo n = do
+  pre <- access cBodyPrev
+  post <- access cBody
+  let (post', pre') = flipElems (length pre - n) pre post
+  void $ cBodyPrev ~= pre'
+  void $ cBody ~= post'
+  renderBody
+  rebuild
 
 colors :: Color -> Color -> Attr -> Attr
 colors fg bg = (`with_fore_color` fg) . (`with_back_color` bg)

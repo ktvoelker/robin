@@ -4,7 +4,7 @@ TODO
 
 Finish the Console library
 
-  Scrolling controls
+  Fix the scrollbar rendering - it seems to think the screen is bigger than it is
 
 Control the terminal rather than relying on "clear" and "less"
 
