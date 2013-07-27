@@ -129,9 +129,12 @@ runBuildProcess p = do
     hClose outHandle
     return code
 
+configOpts :: [String]
+configOpts = ["--enable-tests", "--enable-executable-profiling", "--flags=debug"]
+
 build :: Semaphore -> I ()
 build sem = withLock sem $ do
-  code <- runBuildProcess $ proc "cabal-dev" ["configure", "--enable-tests"]
+  code <- runBuildProcess . proc "cabal-dev" $ ["configure"] ++ configOpts
   -- TODO use something monadic to chain these process calls together nicely
   code' <- case code of
     ExitFailure _ -> return code

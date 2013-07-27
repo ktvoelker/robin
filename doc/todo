@@ -2,11 +2,9 @@
 TODO
 ====
 
-Figure out how to reduce background CPU usage
+Set a self-kill timer after an amount of inactivity
 
-  And set a self-kill timer after an amount of inactivity
-
-  And figure out why pkill cabal-dev-build-daemon does nothing
+Figure out why pkill cabal-dev-build-daemon does nothing
 
 Figure out why only the "start" command succeeds in launching a daemon
 
@@ -19,13 +17,7 @@ Find the repo root based on the presence of a cabal file (don't use git)
 
 Write tests!
 
-Control the terminal rather than relying on "clear" and "less"
-
-  We could try to show some nifty build progress at the top
-
-  We could also show the OK status rather than an empty page
-
-  We could even show the project title from the cabal file!
+Finish and integrate the pretty-watch branch
 
 Replace uses of System.IO with conduit
 

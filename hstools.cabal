@@ -12,7 +12,11 @@ stability:      experimental
 bug-reports:    mailto:ktvoelker@gmail.com
 synopsis:       Some tools for Haskell development
 category:       Development
-tested-with:    GHC == 7.6.2
+tested-with:    GHC == 7.6.3
+
+Flag debug
+  description: Enable debug support
+  default: False
 
 Executable ghci-dev
   main-is: GhciDev.hs
@@ -24,6 +28,11 @@ Executable ghci-dev
     -fno-warn-name-shadowing
     -fno-warn-missing-signatures
     -fno-warn-orphans
+    -prof
+  if flag(Debug)
+    ghc-options: -DDEBUG
+  else
+    ghc-options: -O2
   build-depends:
     base      >= 4    && < 5,
     process   >= 1.1  && < 1.2,
