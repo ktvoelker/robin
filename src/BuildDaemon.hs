@@ -51,7 +51,7 @@ startDaemon = do
 
 usage :: IO ()
 usage = hPutStrLn stderr
-  "Usage: cabal-dev-build-daemon (start | stop | build | watch | debug)"
+  "Usage: cabal-build-daemon (start | stop | build | watch | debug)"
 
 commands :: [(String, IO ())]
 commands =
@@ -134,11 +134,11 @@ configOpts = ["--enable-tests", "--enable-executable-profiling", "--flags=debug"
 
 build :: Semaphore -> I ()
 build sem = withLock sem $ do
-  code <- runBuildProcess . proc "cabal-dev" $ ["configure"] ++ configOpts
+  code <- runBuildProcess . proc "cabal" $ ["configure"] ++ configOpts
   -- TODO use something monadic to chain these process calls together nicely
   code' <- case code of
     ExitFailure _ -> return code
-    ExitSuccess -> runBuildProcess $ proc "cabal-dev" ["build"]
+    ExitSuccess -> runBuildProcess $ proc "cabal" ["build"]
   case code' of
     ExitSuccess -> writeCode 0
     ExitFailure n -> writeCode n
