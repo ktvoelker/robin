@@ -2,7 +2,6 @@
 module Util where
 
 import Data.Char
-import Data.Functor
 import Data.List
 import Data.Maybe
 import Distribution.PackageDescription

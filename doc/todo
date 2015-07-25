@@ -2,14 +2,22 @@
 TODO
 ====
 
-Set a self-kill timer after an amount of inactivity
+Stop using deprecated Control.Monad.Error
 
-Figure out why pkill cabal-dev-build-daemon does nothing
+See about stopping the usage of deprecated isEmptyChan
+
+Move all the special files into a single .cabal-build-daemon subdirectory
 
 Figure out why only the "start" command succeeds in launching a daemon
 
   Probably because the others try to get the lockfile asynchronously before
   the new daemon has created it?
+
+Figure out why pkill cabal-dev-build-daemon does nothing
+
+  Is it because the process is called cabal-build-daemon now?
+
+Set a self-kill timer after an amount of inactivity
 
 Run hlint
 
@@ -28,8 +36,6 @@ Implement clean command
 Generate the .less file via hard-linking to .output
 
   Unlink .output before writing new output
-
-Move all the special files into a single .cabal-dev-build subdirectory
 
 Make it so there's only ever one daemon no matter how many projects need building
 

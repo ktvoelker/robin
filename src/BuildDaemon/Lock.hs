@@ -4,7 +4,6 @@ module BuildDaemon.Lock (newLock, findLock, withLock) where
 import Control.Exception.Lifted
 import Control.Monad.Trans
 import Control.Monad.Trans.Resource
-import Data.Functor
 import System.Posix.Semaphore
 
 import BuildDaemon.Types
