@@ -4,7 +4,7 @@ Robin is a build daemon for Haskell development.
 
 ## Usage
 
-    cabal-dev-build-daemon (start | stop | build | watch | debug)
+    robin (start | stop | build | watch | debug)
 
 This daemon rebuilds a cabalized Haskell project whenever a source file
 changes.
