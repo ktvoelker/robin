@@ -4,7 +4,7 @@ module BuildDaemon.Types where
 
 import Prelude hiding (FilePath, putStrLn)
 
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Resource
@@ -57,16 +57,12 @@ emptyEnv rr =
 data Err = Err
   deriving (Show)
 
-instance Error Err where
-  noMsg = Err
-  strMsg = const Err
-
-type I = ReaderT Env (ErrorT Err (ResourceT IO))
+type I = ReaderT Env (ExceptT Err (ResourceT IO))
 
 type M = StateT St I
 
 runI :: I a -> IO (Either Err a)
-runI m = getRepoRoot >>= runResourceT . runErrorT . runReaderT m . emptyEnv
+runI m = getRepoRoot >>= runResourceT . runExceptT . runReaderT m . emptyEnv
 
 runM :: M a -> IO (Either Err a)
 runM = runI . flip evalStateT emptySt

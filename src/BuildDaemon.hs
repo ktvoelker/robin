@@ -4,7 +4,7 @@ module Main (main) where
 
 import Control.Concurrent
 import Control.Monad
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Trans.Resource
 import Data.Lens

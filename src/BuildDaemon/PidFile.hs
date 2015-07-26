@@ -1,7 +1,7 @@
 
 module BuildDaemon.PidFile where
 
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Trans.Resource
 import System.Directory

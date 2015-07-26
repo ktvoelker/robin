@@ -2,8 +2,6 @@
 TODO
 ====
 
-Stop using deprecated Control.Monad.Error
-
 See about stopping the usage of deprecated isEmptyChan
 
 Move all the special files into a single .cabal-build-daemon subdirectory
