@@ -16,7 +16,6 @@ import System.Posix.Daemonize
 import System.Posix.Directory
 import System.Posix.IO
 import System.Posix.Process
-import System.Posix.Semaphore
 import System.Posix.Signals
 import System.Process
 
@@ -88,7 +87,7 @@ start = do
       debugs $ "Daemon already running: pid " ++ show pid
     Nothing -> do
       debug "Creating lock..."
-      sem <- newLock
+      void ensureLock
       debug "Starting notification manager..."
       do
         mainThread <- liftIO myThreadId
@@ -111,7 +110,7 @@ start = do
           , wPred     = srcPred
           }
         }
-        watchForever [w] $ build sem
+        watchForever [w] build
 
 -- TODO use ResourceT to be safer about the handle
 runBuildProcess :: CreateProcess -> I ExitCode
@@ -132,8 +131,8 @@ runBuildProcess p = do
 configOpts :: [String]
 configOpts = ["--enable-tests", "--enable-executable-profiling", "--flags=debug"]
 
-build :: Semaphore -> I ()
-build sem = withLock sem $ do
+build :: I ()
+build = withLock $ do
   code <- runBuildProcess . proc "cabal" $ ["configure"] ++ configOpts
   -- TODO use something monadic to chain these process calls together nicely
   code' <- case code of
@@ -155,7 +154,7 @@ stop = do
 
 waitForBuild :: M ()
 waitForBuild = do
-  (liftIO . exitWith =<<) . (lift findLock >>=) . flip withLock $ do
+  (liftIO . exitWith =<<) . withLock $ do
     asksString envOutputFile >>= liftIO . readFile >>= liftIO . putStr
     statusStr <- asksString envStatusFile >>= liftIO . readFile
     return $ case readMaybe statusStr of
@@ -186,7 +185,7 @@ dump :: M ProcessHandle
 dump = do
   clearProc <- clearTerminal
   lessFileString <- asksString envLessFile
-  (lift findLock >>=) . flip withLock
+  withLock
     $ asksString envOutputFile
       >>= liftIO . readFile
       >>= liftIO . writeFile lessFileString

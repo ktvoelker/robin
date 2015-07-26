@@ -2,11 +2,6 @@
 TODO
 ====
 
-Figure out why only the "start" command succeeds in launching a daemon
-
-  Probably because the others try to get the lockfile asynchronously before
-  the new daemon has created it?
-
 Record some kind of unique build identifier in the .robin directory, and refuse
 to operate if there is a mismatch.
 
