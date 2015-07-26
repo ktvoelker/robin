@@ -48,7 +48,8 @@ Executable robin
     data-lens-template,
     lifted-base,
     monad-control,
-    time
+    time,
+    system-fileio
   default-extensions:
     FlexibleContexts
     LambdaCase

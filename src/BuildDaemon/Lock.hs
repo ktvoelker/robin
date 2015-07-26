@@ -9,7 +9,7 @@ import System.Posix.Semaphore
 import BuildDaemon.Types
 
 name :: String
-name = "/cabal-dev-build-daemon"
+name = "/robin-xRBVe8IB7Z"
 
 opener :: Bool -> IO Semaphore
 opener create = semOpen name flags 0x700 1

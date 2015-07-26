@@ -12,6 +12,7 @@ import Data.Lens
 import Data.Lens.Template
 import Data.Text (Text())
 import Data.Text.IO (putStrLn)
+import Filesystem
 import Filesystem.Path.CurrentOS
 import GHC.Exts (fromString)
 import System.IO (hFlush, stdout)
@@ -30,6 +31,7 @@ emptySt = St Nothing
 data Env =
   Env
   { _envRepoRoot   :: FilePath
+  , _envRobinRoot  :: FilePath
   , _envStatusFile :: FilePath
   , _envOutputFile :: FilePath
   , _envLessFile   :: FilePath
@@ -44,6 +46,7 @@ emptyEnv :: String -> Env
 emptyEnv rr =
   Env
   { _envRepoRoot   = rr'
+  , _envRobinRoot  = robinRoot
   , _envStatusFile = specialFile "status"
   , _envOutputFile = specialFile "output"
   , _envLessFile   = specialFile "less"
@@ -52,7 +55,8 @@ emptyEnv rr =
   }
   where
     rr' = fromString rr
-    specialFile n = addExtension (rr' </> ".cabal-dev-build-daemon") n
+    robinRoot = rr' </> ".robin"
+    specialFile n = robinRoot </> n
 
 data Err = Err
   deriving (Show)
@@ -62,7 +66,12 @@ type I = ReaderT Env (ExceptT Err (ResourceT IO))
 type M = StateT St I
 
 runI :: I a -> IO (Either Err a)
-runI m = getRepoRoot >>= runResourceT . runExceptT . runReaderT m . emptyEnv
+runI m = getRepoRoot >>= runResourceT . runExceptT . runReaderT m' . emptyEnv
+  where
+    m' = asks (envRobinRoot ^$) >>= ensureDir >> m
+
+ensureDir :: (MonadIO m) => FilePath -> m ()
+ensureDir = liftIO . createDirectory True
 
 runM :: M a -> IO (Either Err a)
 runM = runI . flip evalStateT emptySt
