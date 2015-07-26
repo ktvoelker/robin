@@ -14,12 +14,12 @@ import Control.Concurrent.Chan hiding (isEmptyChan)
 import Control.Exception.Lifted
 import Control.Monad.Reader
 import Control.Monad.Trans.Control
+import Data.Time.Clock
 import Filesystem.Path.CurrentOS
 import GHC.Exts (fromString)
 import System.FSNotify
 
 import BuildDaemon.Types
-import Deprecated
 
 data WatchPred =
     PredPath FilePath
@@ -85,13 +85,13 @@ watchOnce xs m = watchPrim xs $ \chan -> void (readEvent chan) >> m
 watchForever
   :: (MonadBaseControl IO m, MonadIO m)
   => [Watch] -> m () -> m ()
-watchForever xs m = watchPrim xs $ \chan -> m >> forever (flushChan chan >> m)
+watchForever xs m = watchPrim xs $ \chan -> forever $ do
+  t <- liftIO $ getCurrentTime
+  m
+  void $ readEventNewerThan chan t
 
-flushChan :: (MonadIO m) => Chan Event -> m ()
-flushChan chan = r >> f
-  where
-    r = readEvent chan
-    f = liftIO (isEmptyChan chan) >>= \e -> case e of
-      True  -> return ()
-      False -> flushChan chan
+readEventNewerThan :: (MonadIO m) => Chan Event -> UTCTime -> m ()
+readEventNewerThan chan t =
+  readEvent chan
+  >>= \e -> if eventTime e > t then return () else readEventNewerThan chan t
 

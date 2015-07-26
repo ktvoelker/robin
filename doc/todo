@@ -2,16 +2,6 @@
 TODO
 ====
 
-Eliminate usage of deprecated isEmptyChan
-
-  Instead of building when the file event channel is empty, we should build as
-  soon as we get one file event with a timestamp equal to or greater than the time at
-  which the previous build was started; thus, when watching, each build timestamp must
-  be communicated to the watcher.
-
-    It might be possible to simplify the code somewhat by using separate threads for
-    watcher and builder, instead of synchronously alternating control between them.
-
 Move all the special files into a single .robin subdirectory
 
 Figure out why only the "start" command succeeds in launching a daemon
