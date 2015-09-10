@@ -19,6 +19,7 @@ import System.Posix.Process
 import System.Posix.Signals
 import System.Process
 
+import Command
 import Lock
 import PidFile
 import Types
@@ -128,19 +129,10 @@ runBuildProcess p = do
     hClose outHandle
     return code
 
-configOpts :: [String]
-configOpts = ["--enable-tests", "--enable-executable-profiling"]
-
 build :: I ()
-build = withLock $ do
-  code <- runBuildProcess . proc "cabal" $ ["configure"] ++ configOpts
-  -- TODO use something monadic to chain these process calls together nicely
-  code' <- case code of
-    ExitFailure _ -> return code
-    ExitSuccess -> runBuildProcess $ proc "cabal" ["build"]
-  case code' of
-    ExitSuccess -> writeCode 0
-    ExitFailure n -> writeCode n
+build = withLock $ view envRepoRoot >>= buildCommand >>= runBuildProcess >>= \case
+  ExitSuccess -> writeCode 0
+  ExitFailure n -> writeCode n
 
 writeCode :: (MonadReader Env m, MonadIO m) => Int -> m ()
 writeCode n = view envStatusFile >>= liftIO . flip writeFile (show n)

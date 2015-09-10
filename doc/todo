@@ -2,8 +2,6 @@
 TODO
 ====
 
-Make the build command configurable
-
 Record some kind of unique build identifier in the .robin directory, and refuse
 to operate if there is a mismatch.
 
