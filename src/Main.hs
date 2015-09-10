@@ -3,14 +3,14 @@
 module Main (main) where
 
 import Control.Concurrent
+import Control.Lens
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Trans.Resource
-import Data.Lens
-import Filesystem.Path.CurrentOS
 import System.Environment
 import System.Exit
+import System.FilePath
 import System.IO
 import System.Posix.Daemonize
 import System.Posix.Directory
@@ -19,10 +19,10 @@ import System.Posix.Process
 import System.Posix.Signals
 import System.Process
 
-import BuildDaemon.Lock
-import BuildDaemon.PidFile
-import BuildDaemon.Types
-import BuildDaemon.Watch
+import Lock
+import PidFile
+import Types
+import Watch
 import Util
 
 check :: Either Err a -> IO ()
@@ -35,7 +35,7 @@ startDaemon = do
   void $ forkProcess $ daemonize $ do
     changeWorkingDirectory wd
     (check =<<) . runI $ do
-      logFileString <- asksString envLogFile
+      logFileString <- view envLogFile
       let
       { openLog = do
           (hKey, logHandle) <- allocate (openFile logFileString AppendMode) hClose
@@ -81,7 +81,7 @@ srcPred = PredDisj $ map PredExtension exts
 
 start :: I ()
 start = do
-  repoRoot <- asks (envRepoRoot ^$)
+  repoRoot <- view envRepoRoot
   readPidFile >>= \pid -> case pid of
     Just pid -> do
       debugs $ "Daemon already running: pid " ++ show pid
@@ -115,8 +115,8 @@ start = do
 -- TODO use ResourceT to be safer about the handle
 runBuildProcess :: CreateProcess -> I ExitCode
 runBuildProcess p = do
-  repoRoot <- asksString envRepoRoot
-  outHandle <- asksString envOutputFile >>= liftIO . flip openFile WriteMode
+  repoRoot <- view envRepoRoot
+  outHandle <- view envOutputFile >>= liftIO . flip openFile WriteMode
   liftIO $ do
     (_, _, _, ph) <- createProcess $ p
       { cwd = Just repoRoot
@@ -129,7 +129,7 @@ runBuildProcess p = do
     return code
 
 configOpts :: [String]
-configOpts = ["--enable-tests", "--enable-executable-profiling", "--flags=debug"]
+configOpts = ["--enable-tests", "--enable-executable-profiling"]
 
 build :: I ()
 build = withLock $ do
@@ -143,7 +143,7 @@ build = withLock $ do
     ExitFailure n -> writeCode n
 
 writeCode :: (MonadReader Env m, MonadIO m) => Int -> m ()
-writeCode n = asksString envStatusFile >>= liftIO . flip writeFile (show n)
+writeCode n = view envStatusFile >>= liftIO . flip writeFile (show n)
 
 stop :: I ()
 stop = do
@@ -155,8 +155,8 @@ stop = do
 waitForBuild :: M ()
 waitForBuild = do
   (liftIO . exitWith =<<) . withLock $ do
-    asksString envOutputFile >>= liftIO . readFile >>= liftIO . putStr
-    statusStr <- asksString envStatusFile >>= liftIO . readFile
+    view envOutputFile >>= liftIO . readFile >>= liftIO . putStr
+    statusStr <- view envStatusFile >>= liftIO . readFile
     return $ case readMaybe statusStr of
       Nothing -> ExitFailure 42
       Just 0  -> ExitSuccess
@@ -164,9 +164,9 @@ waitForBuild = do
 
 watchBuilds :: M ()
 watchBuilds = do
-  statusFile <- asks (envStatusFile ^$)
+  statusFile <- view envStatusFile
   let
-  { w = (emptyWatch $ directory statusFile)
+  { w = (emptyWatch $ takeDirectory statusFile)
     { wPred = PredConj [PredPath statusFile, PredInverse PredRemoved]
     }
   }
@@ -174,9 +174,8 @@ watchBuilds = do
 
 lessDump :: M ()
 lessDump = void $
-  access stLessProcess >>= maybe (return ()) (liftIO . terminateProcess)
-  >>
-  dump >>= (stLessProcess ~=) . Just
+  use stLessProcess >>= maybe (return ()) (liftIO . terminateProcess)
+  >> dump >>= assign stLessProcess . Just
 
 clearTerminal :: (MonadIO m) => m ProcessHandle
 clearTerminal = liftIO $ runProcess "clear" [] Nothing Nothing Nothing Nothing Nothing
@@ -184,9 +183,9 @@ clearTerminal = liftIO $ runProcess "clear" [] Nothing Nothing Nothing Nothing N
 dump :: M ProcessHandle
 dump = do
   clearProc <- clearTerminal
-  lessFileString <- asksString envLessFile
+  lessFileString <- view envLessFile
   withLock
-    $ asksString envOutputFile
+    $ view envOutputFile
       >>= liftIO . readFile
       >>= liftIO . writeFile lessFileString
   outHandle <- liftIO $ openFile lessFileString ReadMode

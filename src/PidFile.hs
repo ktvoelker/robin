@@ -1,6 +1,7 @@
 
-module BuildDaemon.PidFile where
+module PidFile where
 
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Trans.Resource
@@ -8,12 +9,12 @@ import System.Directory
 import System.Posix.Process
 import System.Posix.Types
 
-import BuildDaemon.Types
+import Types
 import Util
 
 readPidFile :: (MonadIO m, MonadReader Env m) => m (Maybe CPid)
 readPidFile = do
-  asksString envPidFile
+  view envPidFile
   >>= \fp -> liftIO (doesFileExist fp)
   >>= \ex -> case ex of
     False -> return Nothing
@@ -24,7 +25,7 @@ requirePidFile = readPidFile >>= maybe (throwError Err) return
 
 writePidFile :: (MonadIO m, MonadReader Env m, MonadResource m) => m ()
 writePidFile = do
-  fp  <- asksString envPidFile
+  fp  <- view envPidFile
   pid <- liftIO getProcessID
   _   <- allocate (writeFile fp $ show pid) (const $ removeFile fp)
   return ()

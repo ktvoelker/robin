@@ -1,6 +1,6 @@
 
 {-# LANGUAGE OverloadedStrings #-}
-module BuildDaemon.Watch
+module Watch
   ( WatchPred(..)
   , Watch(..)
   , emptyWatch
@@ -15,11 +15,10 @@ import Control.Exception.Lifted
 import Control.Monad.Reader
 import Control.Monad.Trans.Control
 import Data.Time.Clock
-import Filesystem.Path.CurrentOS
-import GHC.Exts (fromString)
+import System.FilePath
 import System.FSNotify
 
-import BuildDaemon.Types
+import Types
 
 data WatchPred =
     PredPath FilePath
@@ -50,8 +49,8 @@ eventFile (Removed fp _) = fp
 
 wEvalPred :: Event -> WatchPred -> Bool
 wEvalPred e (PredPath fp) = fp == eventFile e
-wEvalPred e (PredName xs) = fromString xs == filename (eventFile e)
-wEvalPred e (PredExtension xs) = Just (fromString xs) == extension (eventFile e)
+wEvalPred e (PredName xs) = xs == takeFileName (eventFile e)
+wEvalPred e (PredExtension xs) = xs == takeExtension (eventFile e)
 wEvalPred (Added _ _) PredAdded = True
 wEvalPred (Modified _ _) PredModified = True
 wEvalPred (Removed _ _) PredRemoved = True

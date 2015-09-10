@@ -1,5 +1,5 @@
 
-module BuildDaemon.Lock (ensureLock, withLock) where
+module Lock (ensureLock, withLock) where
 
 import Control.Exception.Lifted
 import Control.Monad.Trans

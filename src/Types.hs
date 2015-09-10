@@ -1,21 +1,19 @@
 
 {-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
-module BuildDaemon.Types where
+module Types where
 
 import Prelude hiding (FilePath, putStrLn)
 
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Resource
-import Data.Lens
-import Data.Lens.Template
-import Data.Text (Text())
+import Data.Text (Text(), pack)
 import Data.Text.IO (putStrLn)
-import Filesystem
-import Filesystem.Path.CurrentOS
-import GHC.Exts (fromString)
+import System.Directory
 import System.IO (hFlush, stdout)
+import System.FilePath
 import System.Process
 
 import Util
@@ -24,6 +22,8 @@ data St =
   St
   { _stLessProcess :: Maybe ProcessHandle
   }
+
+makeLenses ''St
 
 emptySt :: St
 emptySt = St Nothing
@@ -40,12 +40,12 @@ data Env =
   }
   deriving (Show)
 
-makeLenses [''St, ''Env]
+makeLenses ''Env
 
 emptyEnv :: String -> Env
 emptyEnv rr =
   Env
-  { _envRepoRoot   = rr'
+  { _envRepoRoot   = rr
   , _envRobinRoot  = robinRoot
   , _envStatusFile = specialFile "status"
   , _envOutputFile = specialFile "output"
@@ -54,8 +54,7 @@ emptyEnv rr =
   , _envLogFile    = specialFile "log"
   }
   where
-    rr' = fromString rr
-    robinRoot = rr' </> ".robin"
+    robinRoot = rr </> ".robin"
     specialFile n = robinRoot </> n
 
 data Err = Err
@@ -68,20 +67,17 @@ type M = StateT St I
 runI :: I a -> IO (Either Err a)
 runI m = getRepoRoot >>= runResourceT . runExceptT . runReaderT m' . emptyEnv
   where
-    m' = asks (envRobinRoot ^$) >>= ensureDir >> m
+    m' = view envRobinRoot >>= ensureDir >> m
 
 ensureDir :: (MonadIO m) => FilePath -> m ()
-ensureDir = liftIO . createDirectory True
+ensureDir = liftIO . createDirectoryIfMissing False
 
 runM :: M a -> IO (Either Err a)
 runM = runI . flip evalStateT emptySt
 
-asksString :: (MonadReader Env m) => Lens Env FilePath -> m String
-asksString lens = asks $ encodeString . (lens ^$)
-
 debug :: (MonadIO m) => Text -> m ()
 debug text = liftIO $ putStrLn text >> hFlush stdout
 
-debugs :: (MonadIO m) => String -> m ()
-debugs = debug . fromString
+debugs :: (MonadIO m) => [Char] -> m ()
+debugs = debug . pack
 
