@@ -75,7 +75,7 @@ main :: IO ()
 main = getArgs >>= command
 
 exts :: [String]
-exts = ["hs", "lhs", "cabal"]
+exts = ["hs", "lhs", "cabal", "yaml"]
 
 srcPred :: WatchPred
 srcPred = PredDisj $ map PredExtension exts

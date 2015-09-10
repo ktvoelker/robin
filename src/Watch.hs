@@ -50,7 +50,7 @@ eventFile (Removed fp _) = fp
 wEvalPred :: Event -> WatchPred -> Bool
 wEvalPred e (PredPath fp) = fp == eventFile e
 wEvalPred e (PredName xs) = xs == takeFileName (eventFile e)
-wEvalPred e (PredExtension xs) = xs == takeExtension (eventFile e)
+wEvalPred e (PredExtension xs) = '.' : xs == takeExtension (eventFile e)
 wEvalPred (Added _ _) PredAdded = True
 wEvalPred (Modified _ _) PredModified = True
 wEvalPred (Removed _ _) PredRemoved = True
