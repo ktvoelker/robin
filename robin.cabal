@@ -1,6 +1,6 @@
 
 name:           robin
-version:        0.0.1
+version:        0.1.0.0
 cabal-version:  >= 1.10
 build-type:     Simple
 license:        GPL-3
@@ -9,10 +9,21 @@ copyright:      (c) 2013-2015 Karl Voelker
 author:         Karl Voelker
 maintainer:     robin@karlv.net
 stability:      experimental
-bug-reports:    mailto:robin@karlv.net
+homepage:       https://www.github.com/ktvoelker/robin
+bug-reports:    https://www.github.com/ktvoelker/robin/issues
 synopsis:       A build daemon for Haskell development
+description:
+  Robin is a daemon for Haskell developers. It runs a build whenever a source
+  file changes. Cabal, Stack, and custom builds are all supported.
 category:       Development
-tested-with:    GHC == 7.10.1
+tested-with:    GHC == 7.10.2
+extra-source-files:
+  stack.yaml,
+  README.md
+
+Source-repository head
+  type: git
+  location: https://github.com/ktvoelker/robin.git
 
 Executable robin
   main-is: Main.hs
@@ -32,7 +43,7 @@ Executable robin
     -fno-warn-orphans
   build-depends:
     Cabal,
-    base,
+    base >= 4 && < 5,
     directory,
     filepath,
     fsnotify,

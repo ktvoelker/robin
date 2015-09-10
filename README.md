@@ -7,7 +7,11 @@ Robin is a build daemon for Haskell development.
     robin (start | stop | build | watch | debug)
 
 This daemon rebuilds a cabalized Haskell project whenever a source file
-changes.
+changes. It runs one of the following commands:
+
+* `./robin.sh`, if that file exists, or
+* `stack build`, if `stack.yaml` exists, or
+* `cabal build`, otherwise.
 
 ## Commands
 
@@ -20,10 +24,8 @@ changes.
 
 The default command is _build_.
 
-Note: the _current project_ is identified by the lone cabal file in the root
-directory of the git working copy of the current directory. (In other words,
-`$(git rev-parse --show-toplevel)/*.cabal`.) I'm not sure if this is the ideal
-definition.
+Note: the _current project_ is assumed to be the root of the git working copy
+which contains the current directory.  definition.
 
 
 ## Vim integration
