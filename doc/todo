@@ -2,18 +2,31 @@
 TODO
 ====
 
-Record some kind of unique build identifier in the .robin directory, and refuse
-to operate if there is a mismatch.
+Stop using less
 
-Set a self-kill timer after an amount of inactivity
+  Look at the pretty-watch branch to see if it still makes sense.
+
+  Instead, take over the terminal directly.
+
+  Clear the terminal and print a message when starting a new build.
+  The message should have a timestamp and a serial number. Keep track of
+  the serial number in a file in .robin.
+
+Record some kind of unique build identifier in the .robin directory, and
+refuse to operate if there is a mismatch.
+
+Stop the daemon after a period of inactivity.
 
 Run hlint
 
 Find the repo root based on the presence of a cabal file (don't use git)
 
-Write tests!
+  Or a stack.yaml, or a robin.sh. Use the same precedence as the builder.
 
-Finish and integrate the pretty-watch branch
+  Better yet, reuse the same information to determine how to build, to ensure
+  consistency.
+
+Write tests!
 
 Replace uses of System.IO with conduit
 
@@ -24,8 +37,6 @@ Implement clean command
 Generate the .less file via hard-linking to .output
 
   Unlink .output before writing new output
-
-Make it so there's only ever one daemon no matter how many projects need building
 
 Make the debug log output optional
 
