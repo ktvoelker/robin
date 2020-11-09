@@ -64,6 +64,9 @@ type I = ReaderT Env (ExceptT Err (ResourceT IO))
 
 type M = StateT St I
 
+instance (MonadUnliftIO m) => MonadUnliftIO (ExceptT r m)
+instance MonadUnliftIO m => MonadUnliftIO (StateT r m)
+
 runI :: I a -> IO (Either Err a)
 runI m = getRepoRoot >>= runResourceT . runExceptT . runReaderT m' . emptyEnv
   where

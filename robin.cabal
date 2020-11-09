@@ -56,7 +56,10 @@ Executable robin
     resourcet,
     text,
     time,
-    unix
+    unix,
+    unliftio,
+    conduit,
+    transformers
   default-extensions:
     FlexibleContexts
     LambdaCase
