@@ -31,3 +31,9 @@ which contains the current directory.
 ## Vim integration
 
     echo 'setlocal makeprg=robin' >> ~/.vim/ftplugin/haskell.vim
+
+## Alternatives
+
+Similar functionality is built in to Stack:
+
+    stack build --file-watch
